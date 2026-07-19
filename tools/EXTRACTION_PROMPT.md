@@ -82,3 +82,8 @@ Review the diff by hand. The point of stable ids is that a real diff should be s
 and explainable: new controls appended, wording sharpened, values corrected. A diff
 that renumbers everything means the procedure was not followed and the run should be
 redone — otherwise every historical finding loses its anchor.
+
+---
+
+Compiled and maintained by Nik M Adam, Adam One Services.
+Feature requests and bug reports: hello@adamoneservices.com

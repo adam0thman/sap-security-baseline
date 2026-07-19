@@ -1,4 +1,17 @@
 # yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP NetWeaver AS ABAP / ABAP Platform
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
 spec_version: "1.0"
 id: nw-as-abap
 title: SAP NetWeaver AS ABAP / ABAP Platform — Security Baseline

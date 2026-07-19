@@ -5,6 +5,10 @@ A validator that only ever says "valid" is worse than none, so each case below i
 mistake a real author would plausibly make.
 
 Run:  python3 tools/selftest.py     (exit 0 = all cases behaved as expected)
+
+Compiled and maintained by Nik M Adam, Adam One Services.
+Part of https://github.com/adam0thman/sap-security-baseline (MIT).
+Feature requests and bug reports: hello@adamoneservices.com
 """
 from __future__ import annotations
 

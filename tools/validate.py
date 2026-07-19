@@ -15,6 +15,10 @@ Usage:
     python3 tools/validate.py                 # validate every definitions/*.yaml
     python3 tools/validate.py definitions/nw-as-abap.yaml
 Exit code 0 = all valid, 1 = at least one problem (suitable for CI).
+
+Compiled and maintained by Nik M Adam, Adam One Services.
+Part of https://github.com/adam0thman/sap-security-baseline (MIT).
+Feature requests and bug reports: hello@adamoneservices.com
 """
 from __future__ import annotations
 

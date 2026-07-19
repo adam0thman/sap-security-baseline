@@ -24,9 +24,9 @@ product:
   key: NW_AS_ABAP
   name: SAP NetWeaver Application Server for ABAP
   versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
-version: "2026.07.5"
+version: "2026.07.6"
 released: "2026-07-19"
-supersedes: "2026.07.4"
+supersedes: "2026.07.5"
 sources:
   - title: SAP NetWeaver Application Server for ABAP Security Guide
     url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
@@ -422,9 +422,12 @@ controls:
     check:
       type: table_query
       table: T000
-      fields: ["MANDT", "CCCATEGORY", "CCCORACTIV", "CCNOCLIIND"]
-      where: "CCCATEGORY = 'P'"
-      assert: any_rows
+      fields: ["MANDT", "CCCATEGORY", "CCCORACTIV"]
+      # Productive clients (CCCATEGORY 'P') that still permit repository / cross-client
+      # changes. Asserting a productive client merely EXISTS would fail on any sandbox
+      # for the wrong reason, and pass an open production client on a real system.
+      where: "CCCATEGORY EQ 'P' AND CCCORACTIV NE '1'"
+      assert: no_rows
     remediation: >
       In SCC4 set productive clients to "no changes allowed" for both client-specific
       and cross-client objects, and set the client role to Production.

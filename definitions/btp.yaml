@@ -1,0 +1,288 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP Business Technology Platform (BTP)
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: btp
+title: SAP Business Technology Platform — Security Baseline
+product:
+  key: BTP
+  name: SAP BTP (global account / subaccount, Cloud Foundry environment)
+  versions: ["Cloud"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP BTP Security Recommendations
+    url: https://help.sap.com/docs/btp/sap-btp-security-recommendations-c8a9bb59fe624f0981efa0eff2497d7d/sap-btp-security-recommendations
+    retrieved: "2026-07-19"
+  - title: SAP BTP — Security
+    url: https://help.sap.com/docs/btp/sap-business-technology-platform/btp-security
+    retrieved: "2026-07-19"
+  - title: Security Administration — Managing Authentication and Authorization
+    url: https://help.sap.com/docs/btp/sap-business-technology-platform/security-administration-managing-authentication-and-authorization
+    retrieved: "2026-07-19"
+  - title: Role Collections and Roles in Global Accounts, Directories, and Subaccounts
+    url: https://help.sap.com/docs/btp/sap-business-technology-platform/role-collections-and-roles-in-global-accounts-directories-and-subaccounts
+    retrieved: "2026-07-19"
+  - title: Audit Logging in the Cloud Foundry Environment
+    url: https://help.sap.com/docs/r/cca91383641e40ffbe03bdc78f00f681/Cloud/en-US/63bd823990cb4d26a098869fe3a0a8a7.html
+    retrieved: "2026-07-19"
+
+# NOTE: BTP is configured through cloud APIs and cockpits rather than an instance
+# profile, and this baseline defines no BTP probe, so controls are `manual` with
+# precise evidence hints. SAP's own Security Recommendations page is the live
+# authority and is updated continuously — re-check it when regenerating this file.
+controls:
+  # ── Identity & authentication ─────────────────────────────────────────────
+  - id: BTP-AUTHN-0001
+    title: Productive subaccounts do not rely on the default identity provider
+    category: authentication
+    severity: high
+    rationale: >
+      The default SAP ID Service is convenient for trials but leaves user lifecycle
+      outside the customer's control: leavers are not deprovisioned by the corporate
+      process, and the organisation's MFA and password policy do not apply.
+    check:
+      type: manual
+      evidence_hint: >
+        Trust configuration of each productive subaccount showing a custom identity
+        provider, with the default provider disabled for business users.
+    remediation: >
+      Establish trust to the corporate identity provider (via Identity Authentication),
+      and disable the default provider for business users in productive subaccounts.
+    tags: [baseline, identity, sso]
+
+  - id: BTP-AUTHN-0002
+    title: Platform and business user trust are configured deliberately
+    category: authentication
+    severity: high
+    rationale: >
+      BTP separates platform users, who administer the account, from business users, who
+      consume applications, and they have separate trust configurations. Overlooking the
+      platform side leaves the administrative plane authenticated by whatever the global
+      account defaults to.
+    check:
+      type: manual
+      evidence_hint: >
+        Trust settings for both platform users at the global account and business users
+        per subaccount, showing which identity provider governs each.
+    remediation: >
+      Configure both trust paths explicitly against the corporate identity provider, and
+      enforce multi-factor authentication for platform users.
+    tags: [baseline, identity]
+
+  - id: BTP-AUTHN-0003
+    title: Multi-factor authentication is enforced for administrators
+    category: authentication
+    severity: critical
+    rationale: >
+      A platform administrator can create service instances, read bindings and reach
+      connected on-premise systems. Password-only authentication for that role means one
+      phished credential yields control of the account.
+    check:
+      type: manual
+      evidence_hint: >
+        Identity provider policy showing MFA required for the groups mapped to
+        administrative role collections.
+    remediation: >
+      Require MFA in the identity provider for administrative groups, and confirm no
+      break-glass account bypasses it without compensating controls.
+    tags: [baseline, identity, quick-win]
+
+  # ── Authorization ─────────────────────────────────────────────────────────
+  - id: BTP-AUTHZ-0001
+    title: Administrative role collections are held by named individuals only
+    category: authorization
+    severity: critical
+    rationale: >
+      Role collections such as the global account and subaccount administrators confer
+      full control over the account and its service instances. Assigned broadly or to
+      shared accounts, they remove both least privilege and attribution.
+    check:
+      type: manual
+      evidence_hint: >
+        Export of members of administrative role collections at global account,
+        directory and subaccount level, each mapped to a named person.
+    remediation: >
+      Reduce administrative role collections to named individuals, prefer group-based
+      assignment from the identity provider, and review membership on a defined cadence.
+    tags: [baseline, least-privilege]
+
+  - id: BTP-AUTHZ-0002
+    title: Role collections are assigned via identity provider groups
+    category: authorization
+    severity: medium
+    rationale: >
+      Assigning role collections to individual users directly means access is not removed
+      when someone changes role or leaves, because the corporate joiner-mover-leaver
+      process never touches the BTP assignment.
+    check:
+      type: manual
+      evidence_hint: >
+        Role collection assignments showing group-based mapping rather than a list of
+        individual user assignments.
+    remediation: >
+      Map role collections to identity provider groups so that access follows the
+      corporate identity lifecycle.
+    tags: [least-privilege, identity]
+
+  - id: BTP-AUTHZ-0003
+    title: Subaccounts separate environments and trust domains
+    category: system-management
+    severity: high
+    rationale: >
+      Subaccounts are the boundary for entitlements, trust and role collections. Running
+      development and production in one subaccount means developer access and production
+      data share a security boundary.
+    check:
+      type: manual
+      evidence_hint: >
+        Subaccount layout showing separate subaccounts per environment, with their
+        respective administrator sets.
+    remediation: >
+      Separate productive from non-productive workloads into distinct subaccounts and
+      keep their administrator populations distinct.
+    tags: [baseline, isolation]
+
+  # ── Credentials & connectivity ────────────────────────────────────────────
+  - id: BTP-CRED-0001
+    title: Service keys and binding secrets are rotated and not shared
+    category: authentication
+    severity: high
+    rationale: >
+      A service key is a long-lived credential to a service instance and its data. Keys
+      pasted into documentation, code or chat outlive the person who created them and are
+      rarely rotated, so their exposure window is effectively unbounded.
+    check:
+      type: manual
+      evidence_hint: >
+        Inventory of service keys with creation dates and owners, plus evidence they are
+        held in a vault rather than in repositories or documentation.
+    remediation: >
+      Rotate service keys on a defined schedule, hold them in a credential vault, and
+      revoke keys whose purpose has ended.
+    tags: [baseline, credentials, rotation]
+
+  - id: BTP-CRED-0002
+    title: Certificates and trust artefacts are monitored for expiry
+    category: encryption
+    severity: high
+    rationale: >
+      Integration Suite keystore entries, SAML signing certificates and destination client
+      certificates all expire. Expiry causes a hard interface outage that is typically
+      discovered by the business rather than by monitoring.
+    check:
+      type: manual
+      evidence_hint: >
+        Inventory of certificates in keystores, destinations and trust configurations with
+        their expiry dates and an alerting arrangement ahead of expiry.
+    remediation: >
+      Track expiry dates centrally and alert well before expiry, rather than relying on
+      the outage as the notification.
+    tags: [certificates, monitoring]
+
+  - id: BTP-NET-0001
+    title: Cloud Connector exposes only the required back-end resources
+    category: network
+    severity: critical
+    rationale: >
+      The Cloud Connector is a deliberate hole through the corporate perimeter. Its access
+      control list decides exactly what a cloud application can reach on-premise; broad
+      host or path entries turn a scoped integration into general internal network access.
+    check:
+      type: manual
+      evidence_hint: >
+        Cloud Connector access control entries showing specific hosts, ports and URL paths
+        rather than wildcards, each mapped to a consuming application.
+    remediation: >
+      Restrict access control entries to the exact resources and paths required, use the
+      most specific path matching available, and review entries when applications retire.
+    tags: [baseline, connectivity, critical-path]
+
+  - id: BTP-NET-0002
+    title: Destinations do not carry over-privileged or shared credentials
+    category: interface-rfc
+    severity: high
+    rationale: >
+      A destination stores the credential an application uses to reach a back end. A
+      destination configured with an administrative or shared technical user grants every
+      consumer of that destination the same reach, regardless of who is logged in.
+    check:
+      type: manual
+      evidence_hint: >
+        Destination configurations showing authentication type and, where a technical user
+        is used, the authorizations that user holds in the target system.
+    remediation: >
+      Prefer principal propagation or OAuth over stored technical users; where a technical
+      user is unavoidable, scope its back-end authorizations to the specific interface.
+    tags: [connectivity, least-privilege]
+
+  # ── Logging ───────────────────────────────────────────────────────────────
+  - id: BTP-LOG-0001
+    title: Audit logs are retrieved and retained beyond the platform default
+    category: logging-audit
+    severity: high
+    rationale: >
+      BTP audit logs are retained by the platform only for a limited period. Since
+      security incidents are routinely discovered months after the fact, logs left solely
+      on the platform will have aged out before anyone looks.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence that audit logs are retrieved via the Audit Log Retrieval API into the
+        customer's own log store, with the retention period applied there.
+    remediation: >
+      Retrieve audit logs into a central log store or SIEM on a schedule, and retain them
+      for the period the customer's policy requires.
+    tags: [baseline, audit, monitoring]
+
+  - id: BTP-LOG-0002
+    title: Cloud Connector audit logging is switched on for productive use
+    category: logging-audit
+    severity: high
+    rationale: >
+      The Cloud Connector audit log is the record of what reached the on-premise
+      landscape from the cloud. With it off, traffic through the perimeter hole is
+      unaccounted for.
+    check:
+      type: manual
+      evidence_hint: >
+        Cloud Connector configuration showing audit logging enabled for productive
+        subaccounts, with the audit files being collected and retained.
+    remediation: >
+      Keep Cloud Connector audit logging switched on whenever it serves productive
+      systems, and collect the audit files into the central log store.
+    tags: [baseline, audit, connectivity]
+
+  # ── Ongoing assurance ─────────────────────────────────────────────────────
+  - id: BTP-PATCH-0001
+    title: SAP's BTP security recommendations are reviewed on a cadence
+    category: patching
+    severity: high
+    rationale: >
+      BTP is a moving target: services, defaults and SAP's own recommendations change
+      continuously, so a configuration reviewed once and never revisited drifts out of
+      compliance without any change on the customer's side.
+    check:
+      type: manual
+      evidence_hint: >
+        Record of the most recent review against SAP's published BTP security
+        recommendations, with findings and their disposition.
+    remediation: >
+      Review SAP's BTP security recommendations at a defined cadence and track the
+      resulting actions like any other finding.
+    references:
+      - url: https://help.sap.com/docs/btp/sap-btp-security-recommendations-c8a9bb59fe624f0981efa0eff2497d7d/sap-btp-security-recommendations
+        label: SAP BTP Security Recommendations (updated continuously)
+    tags: [governance, patch-day]

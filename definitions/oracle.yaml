@@ -1,0 +1,195 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — Oracle Database under SAP
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; Oracle is a trademark of
+#  Oracle Corporation. This project is not affiliated with or endorsed by either.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: oracle
+title: Oracle Database under SAP — Security Baseline
+product:
+  key: ORACLE
+  name: Oracle Database as the SAP NetWeaver database platform
+  versions: ["12c", "19c"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP NetWeaver AS ABAP Security Guide — Data Storage Security
+    url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
+    retrieved: "2026-07-19"
+
+# SCOPE NOTE: this set covers the SAP-managed database surface — the accounts SAP
+# creates, how the application server authenticates, and the network path between
+# them. Engine-level hardening (initialization parameters, Database Vault, fine-grained
+# auditing) is governed by Oracle's own security documentation for the specific
+# release, which is the authority there. Verify values against the Oracle guide and
+# the applicable SAP Notes for your release before acting.
+controls:
+  - id: ORA-AUTHN-0001
+    title: Default database accounts are locked or have had their passwords changed
+    category: authentication
+    severity: critical
+    rationale: >
+      An Oracle installation creates administrative and sample accounts whose default
+      credentials are published. Any left open is direct database access that bypasses
+      every SAP-layer authorization control.
+    check:
+      type: manual
+      evidence_hint: >
+        Account listing showing status and last password change for SYS, SYSTEM, DBSNMP,
+        OUTLN and any remaining sample schemas.
+    remediation: >
+      Lock accounts not required for operation, change the passwords of those that are,
+      and remove sample schemas from productive systems.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: ORA-AUTHN-0002
+    title: The SAP connect credential is held in the secure store, not in plain text
+    category: authentication
+    severity: critical
+    rationale: >
+      The application server must authenticate to the database on every start. Where that
+      credential sits in a readable file or a legacy mechanism, anyone with the relevant
+      OS access owns the database.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence the database connect credential is held in the SAP secure store (SSFS)
+        with restrictive file permissions, and no plaintext credential in profiles or scripts.
+    remediation: >
+      Store the connect user credential in the secure store, restrict the store's file
+      permissions to the SAP administrative OS users, and remove any plaintext copies.
+    tags: [baseline, credentials]
+
+  - id: ORA-AUTHZ-0001
+    title: The SAP schema owner is not used for interactive work
+    category: authorization
+    severity: high
+    rationale: >
+      The SAP schema owner has full rights over all business data. Using it for ad-hoc
+      queries or scripts removes attribution and risks unlogged direct changes that
+      bypass the application's consistency and audit logic.
+    check:
+      type: manual
+      evidence_hint: >
+        List of sessions and named accounts used by DBAs, showing interactive work is done
+        under named accounts rather than the SAP schema owner.
+    remediation: >
+      Give DBAs named accounts with the privileges they need, and reserve the schema owner
+      for the application connection.
+    tags: [least-privilege, sod]
+
+  - id: ORA-NET-0001
+    title: The listener is protected against remote administration
+    category: network
+    severity: critical
+    rationale: >
+      An unprotected listener can be reconfigured remotely and, historically, coerced into
+      writing files or registering rogue services. It is reachable over the network before
+      any database authentication takes place.
+    check:
+      type: manual
+      evidence_hint: >
+        Listener configuration showing administrative restrictions enabled and remote
+        registration disabled or restricted.
+    remediation: >
+      Enable listener administrative restrictions, prevent remote service registration, and
+      keep the listener configuration writable only by the database OS owner.
+    tags: [baseline, network, quick-win]
+
+  - id: ORA-NET-0002
+    title: The database is reachable only from the SAP application servers
+    category: network
+    severity: high
+    rationale: >
+      The database holds every business record the application layer protects. If general
+      user networks can reach the listener port, all of that protection can be bypassed by
+      connecting directly.
+    check:
+      type: manual
+      evidence_hint: >
+        Firewall rules or port-scan evidence showing the database port reachable only from
+        the application servers and administrative hosts.
+    remediation: >
+      Restrict the listener port at the network layer to the application servers and the
+      DBA administration network.
+    tags: [baseline, network]
+
+  - id: ORA-NET-0003
+    title: Client-to-database traffic is encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      Traffic between application server and database carries business data in bulk and
+      the credentials that authorise it; unencrypted, it is readable by anyone on that
+      network segment.
+    check:
+      type: manual
+      evidence_hint: >
+        Network encryption configuration for SQL*Net, or evidence the traffic runs on a
+        dedicated, physically protected network segment.
+    remediation: >
+      Enable native network encryption or TLS for database connections, or document the
+      dedicated network segment relied upon instead.
+    tags: [encryption]
+
+  - id: ORA-DATA-0001
+    title: Backups and exports are protected
+    category: data-storage
+    severity: high
+    rationale: >
+      A database backup is a complete copy of the business data with none of the
+      application's access controls attached, and it routinely leaves the protected host.
+    check:
+      type: manual
+      evidence_hint: >
+        Backup configuration showing encryption at rest or a demonstrably protected backup
+        target, plus access controls on backup and export files.
+    remediation: >
+      Encrypt backups or restrict the backup target to the operations team, and apply the
+      same controls to ad-hoc exports.
+    tags: [baseline, backup]
+
+  - id: ORA-LOG-0001
+    title: Database auditing records privileged activity
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Direct database access bypasses the SAP audit log entirely, so without database-side
+      auditing, activity performed under a DBA account leaves no record anywhere.
+    check:
+      type: manual
+      evidence_hint: >
+        Audit configuration showing privileged connections and administrative actions are
+        recorded, with the audit destination protected from the DBAs it audits.
+    remediation: >
+      Enable auditing for privileged connections and schema changes, and route the audit
+      trail somewhere the DBA team cannot silently amend.
+    tags: [audit]
+
+  - id: ORA-PATCH-0001
+    title: Database patches are assessed and applied on a cadence
+    category: patching
+    severity: critical
+    rationale: >
+      Oracle publishes security fixes quarterly, and SAP qualifies specific patch levels
+      for use under SAP. An unpatched database undermines every control in the layers
+      above it.
+    check:
+      type: manual
+      evidence_hint: >
+        Current database patch level with the applicable Oracle patch set and the SAP Note
+        confirming the level supported for this SAP release.
+    remediation: >
+      Track the quarterly patch cycle, apply the levels SAP supports for the release, and
+      include the database in the monthly patch review.
+    tags: [patching, patch-day]

@@ -1,0 +1,210 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — Microsoft SQL Server under SAP
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; SQL Server and Windows are
+#  trademarks of Microsoft. This project is not affiliated with or endorsed by either.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: sqlserver
+title: Microsoft SQL Server under SAP — Security Baseline
+product:
+  key: SQLSERVER
+  name: Microsoft SQL Server as the SAP NetWeaver database platform
+  versions: ["2016", "2017", "2019", "2022"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP NetWeaver AS ABAP Security Guide — Data Storage Security
+    url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
+    retrieved: "2026-07-19"
+
+# SCOPE NOTE: this set covers the SAP-managed database surface — the accounts SAP
+# creates, how the application server authenticates, and the network path between
+# them. Engine-level hardening (surface area configuration, server roles, policy-based
+# management) is governed by Microsoft's own SQL Server security documentation for the
+# specific release. Verify against that guide and the applicable SAP Notes for your
+# release before acting.
+controls:
+  - id: MSS-AUTHN-0001
+    title: The sa account is disabled or tightly controlled
+    category: authentication
+    severity: critical
+    rationale: >
+      sa is the built-in sysadmin login and the first target of any automated attack
+      against a SQL Server. Enabled with a weak or shared password, it grants complete
+      control of the instance and therefore of all SAP data.
+    check:
+      type: manual
+      evidence_hint: >
+        Login listing showing the sa account's enabled/disabled state, and where it must
+        remain enabled, evidence of a strong unique password held in a vault.
+    remediation: >
+      Disable sa where the SAP installation does not require it; otherwise set a strong
+      unique password, restrict its use, and monitor logons under it.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: MSS-AUTHN-0002
+    title: Windows authentication is preferred over SQL authentication
+    category: authentication
+    severity: high
+    rationale: >
+      Windows authentication puts database logon under the domain's account lifecycle,
+      password policy and lockout, whereas SQL logins are managed separately and are
+      frequently exempt from all three.
+    check:
+      type: manual
+      evidence_hint: >
+        Instance authentication mode, and where mixed mode is enabled, the list of SQL
+        logins with justification for each.
+    remediation: >
+      Use Windows authentication for administrative and application access where the SAP
+      release supports it, and keep mixed mode only for logins that genuinely require it.
+    tags: [baseline, identity]
+
+  - id: MSS-AUTHN-0003
+    title: The SAP connect credential is held in the secure store
+    category: authentication
+    severity: critical
+    rationale: >
+      The application server authenticates to the database on every start; a credential
+      left readable in a profile, script or registry value hands the database to anyone
+      with that OS access.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence the connect credential is held in the SAP secure store (SSFS) with
+        restrictive permissions, and no plaintext copies in profiles or scripts.
+    remediation: >
+      Store the credential in the secure store, restrict its file permissions to the SAP
+      administrative accounts, and remove plaintext copies.
+    tags: [baseline, credentials]
+
+  - id: MSS-AUTHZ-0001
+    title: Service accounts are not local or domain administrators
+    category: authorization
+    severity: high
+    rationale: >
+      Running the database service under an over-privileged account means any code
+      execution achieved through the database inherits administrative rights on the host,
+      and potentially across the domain.
+    check:
+      type: manual
+      evidence_hint: >
+        Service account configuration for the SQL Server services, with the group
+        memberships those accounts hold.
+    remediation: >
+      Run the services under dedicated least-privileged accounts, and remove them from
+      local and domain administrator groups.
+    tags: [baseline, least-privilege]
+
+  - id: MSS-AUTHZ-0002
+    title: sysadmin membership is limited to named database administrators
+    category: authorization
+    severity: high
+    rationale: >
+      The sysadmin server role bypasses all permission checks. Broad membership — often
+      accumulated from application installs and troubleshooting — removes any meaningful
+      access control at the database layer.
+    check:
+      type: manual
+      evidence_hint: >
+        Membership listing of the sysadmin server role with each member mapped to a named
+        person or a justified service.
+    remediation: >
+      Reduce sysadmin membership to named DBAs, and grant applications the specific
+      permissions they need instead.
+    tags: [least-privilege, sod]
+
+  - id: MSS-NET-0001
+    title: The database is reachable only from the SAP application servers
+    category: network
+    severity: high
+    rationale: >
+      Direct network access to the database port bypasses the entire SAP authorization
+      layer; anyone who can connect and authenticate reads the business data directly.
+    check:
+      type: manual
+      evidence_hint: >
+        Firewall rules showing the database port reachable only from application servers
+        and the DBA administration network.
+    remediation: >
+      Restrict the database port at the network layer and disable discovery services that
+      advertise the instance more widely than necessary.
+    tags: [baseline, network]
+
+  - id: MSS-NET-0002
+    title: Client-to-database traffic is encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      Traffic between the application server and the database carries business data in
+      bulk together with the credentials authorising access to it.
+    check:
+      type: manual
+      evidence_hint: >
+        Connection encryption settings with a valid server certificate, or evidence of a
+        dedicated protected network segment.
+    remediation: >
+      Enable TLS for database connections with a properly issued certificate, or document
+      the dedicated network segment relied upon instead.
+    tags: [encryption, tls]
+
+  - id: MSS-DATA-0001
+    title: Data at rest and backups are protected
+    category: data-storage
+    severity: high
+    rationale: >
+      Database files and backups are complete copies of the business data with none of the
+      application's access controls attached, and backups routinely leave the host.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence of transparent data encryption or equivalent, backup encryption, and
+        access controls on the backup target.
+    remediation: >
+      Enable encryption at rest and backup encryption, protect the certificates or keys
+      separately from the data, and restrict the backup target.
+    tags: [baseline, backup, encryption]
+
+  - id: MSS-LOG-0001
+    title: Database auditing records privileged activity
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Activity performed directly against the database never reaches the SAP audit log, so
+      without server-side auditing, administrative access leaves no record.
+    check:
+      type: manual
+      evidence_hint: >
+        Audit specification showing logon auditing and administrative action auditing, with
+        the audit destination protected.
+    remediation: >
+      Enable auditing for successful and failed logons and for permission changes, and
+      store the audit output where DBAs cannot silently amend it.
+    tags: [audit]
+
+  - id: MSS-PATCH-0001
+    title: Database patches are assessed and applied on a cadence
+    category: patching
+    severity: critical
+    rationale: >
+      SQL Server cumulative updates carry security fixes, and SAP qualifies the levels
+      supported under SAP. An unpatched database undermines the layers above it.
+    check:
+      type: manual
+      evidence_hint: >
+        Current build/cumulative update level with the applicable SAP Note confirming
+        support for this SAP release.
+    remediation: >
+      Track the update cadence, apply the levels SAP supports, and include the database in
+      the monthly patch review.
+    tags: [patching, patch-day]

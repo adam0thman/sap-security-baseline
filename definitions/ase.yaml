@@ -1,0 +1,191 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP ASE (Adaptive Server Enterprise) under SAP
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: ase
+title: SAP ASE under SAP — Security Baseline
+product:
+  key: ASE
+  name: SAP Adaptive Server Enterprise as the SAP NetWeaver database platform
+  versions: ["16.0"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP NetWeaver AS ABAP Security Guide — Data Storage Security
+    url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
+    retrieved: "2026-07-19"
+
+# SCOPE NOTE: this set covers the SAP-managed database surface — the accounts created
+# at installation, how the application server connects, and the network path between
+# them. Engine-level hardening (configuration parameters, granular permissions, the
+# full auditing subsystem) is governed by SAP's ASE product documentation for the
+# specific release. Verify against that documentation and the applicable SAP Notes
+# for your release before acting.
+controls:
+  - id: ASE-AUTHN-0001
+    title: The sa account is secured and not used routinely
+    category: authentication
+    severity: critical
+    rationale: >
+      sa is the built-in system administrator login with unrestricted control of the
+      server. Shared among a team or left on an installation password, it is both the
+      obvious attack target and a complete loss of attribution.
+    check:
+      type: manual
+      evidence_hint: >
+        Login listing showing the sa account's status and last password change, plus
+        evidence administrators use named logins for routine work.
+    remediation: >
+      Set a strong unique password held in a vault, lock the account where the
+      installation permits, and give administrators named logins with the roles they need.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: ASE-AUTHN-0002
+    title: The SAP connect credential is held in the secure store
+    category: authentication
+    severity: critical
+    rationale: >
+      The application server authenticates to the database on every start; a credential
+      readable in a profile or script hands the database to anyone with that OS access.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence the connect credential is held in the SAP secure store (SSFS) with
+        restrictive permissions, and no plaintext copies in profiles or scripts.
+    remediation: >
+      Store the credential in the secure store, restrict its permissions to the SAP
+      administrative OS users, and remove plaintext copies.
+    tags: [baseline, credentials]
+
+  - id: ASE-AUTHZ-0001
+    title: Privileged roles are granted to named logins only
+    category: authorization
+    severity: high
+    rationale: >
+      The system administration and security officer roles between them control the
+      server and its access model. Granted broadly or to shared logins, they eliminate
+      both least privilege and any ability to attribute an action.
+    check:
+      type: manual
+      evidence_hint: >
+        Listing of logins holding the system administration and security officer roles,
+        each mapped to a named person.
+    remediation: >
+      Grant privileged roles to named logins, and separate the security officer function
+      from routine database administration.
+    tags: [least-privilege, sod]
+
+  - id: ASE-AUTHZ-0002
+    title: The SAP schema owner is not used for interactive work
+    category: authorization
+    severity: high
+    rationale: >
+      The SAP schema owner has full rights over the business data; interactive use removes
+      attribution and risks direct changes that bypass application consistency and audit
+      logic.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence DBAs use named logins for interactive work rather than the SAP schema
+        owner.
+    remediation: >
+      Give DBAs named logins with the required roles and reserve the schema owner for the
+      application connection.
+    tags: [least-privilege, sod]
+
+  - id: ASE-NET-0001
+    title: The database is reachable only from the SAP application servers
+    category: network
+    severity: high
+    rationale: >
+      Direct network access to the database port bypasses the SAP authorization layer
+      entirely; anyone who can connect and authenticate reads the business data directly.
+    check:
+      type: manual
+      evidence_hint: >
+        Firewall rules showing the database port reachable only from the application
+        servers and the DBA administration network.
+    remediation: >
+      Restrict the database port at the network layer to the application servers and the
+      administration network.
+    tags: [baseline, network]
+
+  - id: ASE-NET-0002
+    title: Client-to-database traffic is encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      The application-server-to-database connection carries bulk business data together
+      with the credentials authorising access to it.
+    check:
+      type: manual
+      evidence_hint: >
+        SSL configuration for the database listener, or evidence of a dedicated protected
+        network segment.
+    remediation: >
+      Enable SSL for database connections with a properly issued certificate, or document
+      the dedicated network segment relied upon instead.
+    tags: [encryption, tls]
+
+  - id: ASE-DATA-0001
+    title: Data at rest and backups (dumps) are protected
+    category: data-storage
+    severity: high
+    rationale: >
+      Device files and database dumps are complete copies of the business data with none
+      of the application's access controls, and dumps routinely leave the host.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence of encryption for data at rest and for database dumps, plus access
+        controls on the dump target.
+    remediation: >
+      Enable database and dump encryption, hold the keys separately from the dumps, and
+      restrict access to the dump target.
+    tags: [baseline, backup, encryption]
+
+  - id: ASE-LOG-0001
+    title: Auditing records privileged activity
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Activity performed directly against the database never reaches the SAP audit log, so
+      without ASE auditing, administrative access leaves no record anywhere.
+    check:
+      type: manual
+      evidence_hint: >
+        Audit configuration showing logins and privileged actions are captured, with the
+        audit output protected from the administrators it records.
+    remediation: >
+      Enable auditing for logins, role changes and administrative actions, and route the
+      output where DBAs cannot silently amend it.
+    tags: [audit]
+
+  - id: ASE-PATCH-0001
+    title: Database patches are assessed and applied on a cadence
+    category: patching
+    severity: critical
+    rationale: >
+      ASE support packages carry security fixes, and SAP qualifies the levels supported
+      under a given SAP release. An unpatched database undermines the layers above it.
+    check:
+      type: manual
+      evidence_hint: >
+        Current ASE patch/support package level with the applicable SAP Note confirming
+        support for this SAP release.
+    remediation: >
+      Track the support package cadence, apply the levels SAP supports, and include the
+      database in the monthly patch review.
+    tags: [patching, patch-day]

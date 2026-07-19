@@ -1,0 +1,329 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP HANA Platform
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.2"
+id: hana
+title: SAP HANA Platform — Security Baseline
+product:
+  key: HANA
+  name: SAP HANA Platform (database)
+  versions: ["2.0 SPS04", "2.0 SPS05", "2.0 SPS06+"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP HANA Security Guide for SAP HANA Platform (2.0 SPS05)
+    url: https://help.sap.com/doc/eec734dbb0fd1014a61590fcb5411390/2.0.05/en-US/SAP_HANA_Security_Guide_en.pdf
+    retrieved: "2026-07-19"
+  - title: SAP HANA Security Guide — Critical security settings
+    url: https://help.sap.com/docs/SAP_HANA_PLATFORM/b3ee5778bc2e4a089d3299b82ec762a7/c3d9889e3c9843bdb834e9eb56f1b041.html
+    retrieved: "2026-07-19"
+
+# NOTE: `sql_query` checks are read-only SELECTs against the SYS catalog; run them
+# with a least-privileged monitoring user, never with SYSTEM.
+controls:
+  # ── Users & authentication ────────────────────────────────────────────────
+  - id: HANA-AUTHN-0001
+    title: The SYSTEM user is deactivated
+    category: authentication
+    severity: critical
+    rationale: >
+      SYSTEM is the initial superuser and holds irrevocable power over the database.
+      SAP's own guidance is to create named administrator users with only the
+      privileges they need and then deactivate SYSTEM, so that day-to-day work is
+      attributable and no single shared credential controls the whole database.
+    check:
+      type: sql_query
+      query: "SELECT USER_NAME FROM SYS.USERS WHERE USER_NAME = 'SYSTEM' AND USER_DEACTIVATED = 'FALSE'"
+      assert: no_rows
+    remediation: >
+      Create named administrators with the required system privileges, verify they can
+      perform all routine administration, then deactivate SYSTEM. Keep its password
+      sealed for emergency reactivation.
+    references:
+      - label: SAP HANA Security Guide — Deactivate the SYSTEM User
+    tags: [baseline, standard-users, quick-win]
+
+  - id: HANA-AUTHN-0002
+    title: Predefined database users are reviewed and secured
+    category: authentication
+    severity: high
+    rationale: >
+      A HANA installation creates a set of predefined technical users. Any left with an
+      installation password, or active when the feature it serves is unused, is standing
+      access to the database.
+    check:
+      type: manual
+      evidence_hint: >
+        SYS.USERS export showing predefined users, their active/deactivated state and
+        last password change, with each active one mapped to a function in use.
+    remediation: >
+      Change installation passwords, deactivate the users whose components are not
+      deployed, and record the remainder with their purpose.
+    tags: [baseline, standard-users]
+
+  - id: HANA-AUTHN-0003
+    title: The password policy meets the customer's standard
+    category: authentication
+    severity: high
+    rationale: >
+      HANA's password policy is configured per system and governs every database user
+      authenticated locally; the delivered defaults are not necessarily aligned with the
+      customer's own policy.
+    check:
+      type: manual
+      evidence_hint: >
+        Password policy configuration (minimal length, complexity, lifetime, failed-logon
+        lockout) compared against the customer's password standard.
+    remediation: >
+      Align the password policy parameters with the customer's standard, and maintain the
+      password blacklist so obvious values are rejected.
+    tags: [baseline, password-policy]
+
+  # ── Authorization ─────────────────────────────────────────────────────────
+  - id: HANA-AUTHZ-0001
+    title: Powerful system privileges are tightly held
+    category: authorization
+    severity: critical
+    rationale: >
+      System privileges such as those granting data access administration, user
+      administration or full catalog read defeat the object-level authorization model.
+      Granted broadly, they let a holder reach any data in the database.
+    check:
+      type: manual
+      evidence_hint: >
+        Export of users and roles holding DATA ADMIN, USER ADMIN, ROLE ADMIN, CATALOG READ
+        or similar system privileges, each with a named owner and justification.
+    remediation: >
+      Remove blanket system privileges from application and business roles, and restrict
+      them to a small, reviewed set of named administrators.
+    tags: [baseline, least-privilege]
+
+  - id: HANA-AUTHZ-0002
+    title: The PUBLIC role carries no sensitive privileges
+    category: authorization
+    severity: high
+    rationale: >
+      Every database user holds PUBLIC implicitly, so any privilege added to it is
+      granted to everyone at once — including technical and application accounts that
+      were never meant to read business data.
+    check:
+      type: manual
+      evidence_hint: >
+        List of privileges granted to PUBLIC, confirming none expose business schemas or
+        administrative functions.
+    remediation: >
+      Revoke non-default privileges from PUBLIC and grant them through explicit roles
+      instead.
+    tags: [baseline, least-privilege, quick-win]
+
+  - id: HANA-AUTHZ-0003
+    title: Analytic privileges restrict access to sensitive views
+    category: authorization
+    severity: high
+    rationale: >
+      Object privileges control whether a view can be queried at all, not which rows it
+      returns. Without analytic privileges, a user permitted to run a calculation view
+      sees every row in it.
+    check:
+      type: manual
+      evidence_hint: >
+        List of views exposing restricted data together with the analytic privileges
+        applied to them.
+    remediation: >
+      Define analytic privileges for views carrying personal, financial or otherwise
+      restricted data, and assign them through roles rather than directly to users.
+    tags: [least-privilege, data-protection]
+
+  # ── Encryption ────────────────────────────────────────────────────────────
+  - id: HANA-ENC-0001
+    title: Data and log volume encryption is active
+    category: encryption
+    severity: high
+    rationale: >
+      Without volume encryption, anyone able to read the data or log files at the
+      filesystem level — a storage administrator, a copied LUN, a stolen disk — reads
+      the database contents without ever authenticating.
+    check:
+      type: sql_query
+      query: "SELECT SCOPE FROM SYS.M_ENCRYPTION_OVERVIEW WHERE SCOPE IN ('PERSISTENCE','LOG') AND IS_ENCRYPTION_ACTIVE = 'FALSE'"
+      assert: no_rows
+    remediation: >
+      Enable data volume and redo log encryption, and confirm the encryption root keys
+      have been changed from their installation values.
+    tags: [baseline, encryption, data-at-rest]
+
+  - id: HANA-ENC-0002
+    title: Backups are encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      Backups leave the protected host by design and are frequently held on shared
+      storage or shipped offsite. An unencrypted backup is a complete copy of the
+      database available to anyone who can read the backup target.
+    check:
+      type: sql_query
+      query: "SELECT SCOPE FROM SYS.M_ENCRYPTION_OVERVIEW WHERE SCOPE = 'BACKUP' AND IS_ENCRYPTION_ACTIVE = 'FALSE'"
+      assert: no_rows
+    remediation: >
+      Enable backup encryption and verify that a restore from an encrypted backup has been
+      tested end to end.
+    tags: [baseline, encryption, backup]
+
+  - id: HANA-ENC-0003
+    title: Encryption root keys are changed and backed up separately
+    category: encryption
+    severity: critical
+    rationale: >
+      Encryption is only as good as its key management. Root keys left at installation
+      values undermine the encryption entirely, while root keys backed up alongside the
+      data they protect defeat the purpose and can also make recovery impossible if lost.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence that root keys were changed after installation and that a root key backup
+        exists, stored separately from the data backups and protected by its own password.
+    remediation: >
+      Change the root keys after installation, back them up to a separate protected
+      location, and document the recovery procedure.
+    tags: [baseline, encryption, key-management]
+
+  # ── Network ───────────────────────────────────────────────────────────────
+  - id: HANA-NET-0001
+    title: Client communication is TLS-protected
+    category: encryption
+    severity: high
+    rationale: >
+      JDBC and ODBC clients carry credentials and query results; unprotected, both are
+      readable by anyone positioned on the network between client and database.
+    check:
+      type: manual
+      evidence_hint: >
+        Client connection configuration showing TLS enforced for JDBC/ODBC, with a valid
+        server certificate and clients configured to validate it.
+    remediation: >
+      Enable and enforce TLS for client connections, install a proper server certificate,
+      and require client-side validation.
+    tags: [baseline, encryption, tls]
+
+  - id: HANA-NET-0002
+    title: Internal and inter-host communication is protected
+    category: network
+    severity: high
+    rationale: >
+      In distributed and replicated systems, the internal channels between hosts carry
+      the same data as the client connections but are frequently left on an unsegmented
+      network and unencrypted.
+    check:
+      type: manual
+      evidence_hint: >
+        Network configuration showing internal communication bound to a dedicated network
+        and, where it crosses shared infrastructure, encrypted.
+    remediation: >
+      Place inter-host and system-replication traffic on a separate network and enable
+      encryption where that traffic leaves trusted infrastructure.
+    tags: [network, encryption]
+
+  - id: HANA-NET-0003
+    title: Tenant databases are isolated from one another
+    category: system-management
+    severity: high
+    rationale: >
+      In a multi-tenant system, tenants share an installation and operating-system
+      footprint. Without isolation configured, a sufficiently privileged user in one
+      tenant can reach data or files belonging to another.
+    check:
+      type: manual
+      evidence_hint: >
+        Configuration showing the intended database isolation level, with separate OS
+        users per tenant where high isolation is required.
+    remediation: >
+      Configure the isolation level appropriate to whether tenants represent different
+      trust domains, and restrict cross-database access explicitly.
+    applies_to:
+      environments: [PRD]
+    tags: [multitenancy, isolation]
+
+  # ── Auditing ──────────────────────────────────────────────────────────────
+  - id: HANA-LOG-0001
+    title: Database auditing is enabled
+    category: logging-audit
+    severity: high
+    rationale: >
+      Auditing is switched off by default. Without it there is no record of privileged
+      activity, failed logons or privilege grants, so misuse of a database administrator
+      account leaves no trace.
+    check:
+      type: sql_query
+      query: "SELECT VALUE FROM SYS.M_INIFILE_CONTENTS WHERE SECTION = 'auditing configuration' AND KEY = 'global_auditing_state' AND UPPER(VALUE) <> 'TRUE'"
+      assert: no_rows
+    remediation: >
+      Enable auditing, choose an appropriate audit trail target, and confirm the trail is
+      protected from the administrators it audits.
+    tags: [baseline, audit, monitoring]
+
+  - id: HANA-LOG-0002
+    title: Audit policies cover privileged and security-relevant actions
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Auditing switched on without meaningful policies produces little of value; the
+      actions that matter for an investigation are privilege grants, user changes,
+      configuration changes and access to sensitive schemas.
+    check:
+      type: manual
+      evidence_hint: >
+        List of active audit policies showing coverage of user and role administration,
+        privilege grants, configuration changes and sensitive data access.
+    remediation: >
+      Define audit policies for the security-relevant action set, and size retention so
+      the trail outlasts realistic detection time.
+    tags: [audit]
+
+  # ── Files & patching ──────────────────────────────────────────────────────
+  - id: HANA-SYS-0001
+    title: Trace, dump and workload capture files are protected
+    category: data-storage
+    severity: medium
+    rationale: >
+      Traces, dumps and captured workloads can contain business data and credential
+      material. They are written to the filesystem where OS-level access, not database
+      authorization, decides who can read them.
+    check:
+      type: manual
+      evidence_hint: >
+        Filesystem permissions on the trace and dump directories, plus the retention and
+        deletion practice for captured workload files.
+    remediation: >
+      Restrict OS access to the trace directories, avoid high trace levels in production,
+      and delete captured workload files once they are no longer needed.
+    tags: [data-storage]
+
+  - id: HANA-PATCH-0001
+    title: HANA revisions and security notes are assessed and applied
+    category: patching
+    severity: critical
+    rationale: >
+      The database holds the data every application layer protects; a defect fixed only
+      by a revision leaves that data exposed no matter how well the application above it
+      is configured.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day comparison covering the current HANA revision with applicable HANA
+        security notes and their status.
+    remediation: >
+      Track HANA revisions against the maintenance strategy and include HANA in the
+      monthly Patch Day comparison.
+    tags: [patching, patch-day]

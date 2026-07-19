@@ -289,6 +289,39 @@
           "additionalProperties": false
         },
         {
+          "description": "A read-only SELECT against the database's own catalog. The query MUST NOT modify data; consumers are expected to run it with a least-privileged read account.",
+          "properties": {
+            "type": {
+              "const": "sql_query"
+            },
+            "query": {
+              "type": "string",
+              "minLength": 10
+            },
+            "assert": {
+              "type": "string",
+              "enum": [
+                "no_rows",
+                "any_rows",
+                "row_count_lte",
+                "row_count_gte"
+              ]
+            },
+            "value": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "query",
+            "assert"
+          ],
+          "additionalProperties": false
+        },
+        {
           "properties": {
             "type": {
               "const": "ume_property"

@@ -61,6 +61,13 @@ definitions/
   sap-gateway.yaml           SAP Gateway (OData / Fiori Foundation)
   bw.yaml                    SAP Business Warehouse (classic, on NetWeaver)
   bw4hana.yaml               SAP BW/4HANA
+  solman.yaml                SAP Solution Manager 7.2
+  hana.yaml                  SAP HANA Platform (database)
+  oracle.yaml                Oracle Database under SAP
+  sqlserver.yaml             Microsoft SQL Server under SAP
+  db2.yaml                   IBM Db2 for LUW under SAP
+  ase.yaml                   SAP ASE under SAP
+  btp.yaml                   SAP Business Technology Platform
 
 tools/
   validate.py                Validates definitions: schema + rules JSON Schema can't express
@@ -96,6 +103,7 @@ consuming tool implements one probe per type.
 |---|---|---|
 | `profile_parameter` | Instance profile / `RSPARAM` | `login/min_password_lng >= 8` |
 | `ume_property` | AS Java UME property | `ume.superadmin.activated = false` |
+| `sql_query` | Read-only SELECT on the DB catalog | HANA `SYSTEM` user deactivated |
 | `table_query` | A table via RFC | Production clients closed in `T000` |
 | `user_query` | User master data | No standard user left on a default password |
 | `gateway_acl` | `secinfo` / `reginfo` | ACL exists and is restrictive |
@@ -117,11 +125,28 @@ subset trustworthy.
 | `sap-gateway` | `SAP_GATEWAY` | 8 (2 auto / 6 manual) | Published |
 | `bw` | `BW` | 8 (1 auto / 7 manual) | Published |
 | `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | Published |
-| — | `SOLMAN`, `HANA`, `MAXDB`, `ORACLE`, `SQLSERVER`, `DB2`, `ASE`, `BTP` | — | Backlog |
+| `solman` | `SOLMAN` | 10 (2 auto / 8 manual) | Published |
+| `hana` | `HANA` | 16 (4 auto / 12 manual) | Published |
+| `oracle` | `ORACLE` | 9 (manual) | Published |
+| `sqlserver` | `SQLSERVER` | 10 (manual) | Published |
+| `db2` | `DB2` | 9 (manual) | Published |
+| `ase` | `ASE` | 9 (manual) | Published |
+| `btp` | `BTP` | 13 (manual) | Published |
+| — | `MAXDB` | — | Backlog |
 
-**65 controls across 5 products.** Layering is deliberate: BW, BW/4HANA and Gateway all run on
-AS ABAP, so `nw-as-abap` applies *in addition* to those sets rather than being duplicated into
-them. Each file states its layering in a comment at the top of `controls`.
+**141 controls across 12 products.**
+
+Two things to understand about how these fit together:
+
+- **Sets layer, they don't duplicate.** BW, BW/4HANA, Gateway and Solution Manager all run on
+  AS ABAP, so `nw-as-abap` applies *in addition* to those sets. Each file states its layering in a
+  comment above `controls`.
+- **The third-party database sets are deliberately scoped.** `oracle`, `sqlserver`, `db2` and `ase`
+  cover the **SAP-managed surface** — the accounts SAP creates, how the application server
+  authenticates, the network path, backups and patch cadence. Engine-level hardening remains
+  governed by the database vendor's own security documentation, which each file names in a scope
+  note. They are intentionally all-manual: no probe here should imply authority over a vendor's
+  engine configuration.
 
 ---
 

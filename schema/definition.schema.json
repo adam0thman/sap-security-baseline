@@ -492,6 +492,25 @@
             "assert"
           ],
           "additionalProperties": false
+        },
+        {
+          "description": "SAP Security Patch Day assessment: the note index matched against this system's components and SNOTE state.",
+          "properties": {
+            "type": {
+              "const": "patch_notes"
+            },
+            "assert": {
+              "type": "string",
+              "enum": [
+                "no_unfinished_critical"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "assert"
+          ],
+          "additionalProperties": false
         }
       ]
     },

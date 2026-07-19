@@ -24,9 +24,9 @@ product:
   key: NW_AS_ABAP
   name: SAP NetWeaver Application Server for ABAP
   versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
-version: "2026.07.4"
+version: "2026.07.5"
 released: "2026-07-19"
-supersedes: "2026.07.3"
+supersedes: "2026.07.4"
 sources:
   - title: SAP NetWeaver Application Server for ABAP Security Guide
     url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
@@ -452,13 +452,14 @@ controls:
       Security notes are published monthly with public CVEs; unapplied HotNews and
       High-priority notes are the most commonly exploited weakness in SAP estates.
     check:
-      type: manual
-      evidence_hint: >
-        Patch Day review output showing each applicable note with its SNOTE status
-        or the Support Package level that covers it.
+      type: patch_notes
+      assert: no_unfinished_critical
     remediation: >
       Run the monthly Patch Day comparison against this system's component levels and
-      schedule the applicable HotNews/High notes.
+      schedule the applicable HotNews/High notes. Note that a note fixed by a Support
+      Package or kernel patch never appears in SNOTE, so "not finished in SNOTE" means
+      "not demonstrably applied" rather than "definitely missing" — confirm the SP level
+      via SAP for Me before reporting it as a gap.
     tags: [patching, patch-day]
 
   # ── Custom code ───────────────────────────────────────────────────────────

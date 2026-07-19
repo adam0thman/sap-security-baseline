@@ -40,45 +40,52 @@ something you can *check*.
 > | Definition set | SAP Note / KBA | Version used | Released |
 > |---|---|---|---|
 > | `hana` | 3480723 | v5 | 2026-04-21 |
-> | `ase` | `ASE` | 9 (0 auto / 9 manual) | 2026.07.1 |
-| `btp` | `BTP` | 13 (0 auto / 13 manual) | 2026.07.1 |
-| `bw` | `BW` | 8 (1 auto / 7 manual) | 2026.07.1 |
-| `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | 2026.07.1 |
-| `db2` | `DB2` | 9 (0 auto / 9 manual) | 2026.07.1 |
-| `hana` | `HANA` | 32 (4 auto / 28 manual) | 2026.07.2 |
-| `nw-as-abap` | `NW_AS_ABAP` | 76 (56 auto / 20 manual) | 2026.07.2 |
+> | `nw-as-abap` | 3250501 | v46 | 2026-05-15 |
+> | `nw-as-java` | 3381209 | v9 | 2026-04-09 |
+>
+> If you find a Note has been revised past what is recorded here, that is a bug worth
+> reporting — **hello@adamoneservices.com** — or a pull request.
+
+---
+
+## Coverage
+
+| Definition set | Product key | Controls | Set version |
+|---|---|---:|---|
+| `nw-as-abap` | `NW_AS_ABAP` | 80 (61 auto / 19 manual) | 2026.07.4 |
 | `nw-as-java` | `NW_AS_JAVA` | 32 (20 auto / 12 manual) | 2026.07.2 |
-| `oracle` | `ORACLE` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `hana` | `HANA` | 32 (4 auto / 28 manual) | 2026.07.2 |
 | `sap-gateway` | `SAP_GATEWAY` | 8 (2 auto / 6 manual) | 2026.07.1 |
 | `solman` | `SOLMAN` | 10 (2 auto / 8 manual) | 2026.07.1 |
+| `bw` | `BW` | 8 (1 auto / 7 manual) | 2026.07.1 |
+| `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | 2026.07.1 |
+| `ase` | `ASE` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `btp` | `BTP` | 13 (0 auto / 13 manual) | 2026.07.1 |
+| `db2` | `DB2` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `oracle` | `ORACLE` | 9 (0 auto / 9 manual) | 2026.07.1 |
 | `sqlserver` | `SQLSERVER` | 10 (0 auto / 10 manual) | 2026.07.1 |
 | — | `MAXDB` | — | Backlog |
 
-**228 controls across 12 products.**
+**232 controls across 12 products — 91 machine-checkable, 141 attested.**
 
-Two things to understand about how these fit together:
+Four things to understand about how these fit together:
 
 - **Sets layer, they don't duplicate.** BW, BW/4HANA, Gateway and Solution Manager all run on
   AS ABAP, so `nw-as-abap` applies *in addition* to those sets. Each file states its layering in a
   comment above `controls`.
-- **Some values are the SAP cloud (ECS/RISE/GCO) mandatory standard.** The AS ABAP, AS Java
-  and HANA sets incorporate SAP's mandatory hardening Notes for SAP Enterprise Cloud Services.
-  Those values are stricter than general on-premise guidance — for example a 15-character
-  minimum password length on ABAP — and controls carrying them are tagged **`ecs-mandatory`**.
-  If you run ECS or RISE they are compulsory; on-premise, treat them as a strong baseline and
-  justify deviations against your own policy. Filter the tag to separate the two regimes.
-- **Non-security parameters are out of scope.** SAP also publishes mandatory *non-security*
-  parameter Notes for ECS (performance and stability — memory sizing and similar). Those are
-  deliberately excluded: this is a security baseline, and mixing operational tuning into it
-  would blur what a finding means.
-- **The third-party database sets are deliberately scoped.** `oracle`, `sqlserver`, `db2` and `ase`
-  cover the **SAP-managed surface** — the accounts SAP creates, how the application server
-  authenticates, the network path, backups and patch cadence. Engine-level hardening remains
-  governed by the database vendor's own security documentation, which each file names in a scope
-  note. They are intentionally all-manual: no probe here should imply authority over a vendor's
-  engine configuration.
-
----
+- **Some values are the SAP cloud (ECS / RISE / GCO) mandatory standard.** The AS ABAP, AS Java and
+  HANA sets incorporate SAP's mandatory hardening Notes. Those values are stricter than general
+  on-premise guidance — a 15-character minimum password length on ABAP, for example — and the
+  controls carrying them are tagged **`ecs-mandatory`**. Compulsory if you run ECS or RISE; a strong
+  baseline otherwise. Filter the tag to separate the two regimes.
+- **The third-party database sets are deliberately scoped** to the SAP-managed surface: the accounts
+  SAP creates, how the application server authenticates, the network path, backups and patch cadence.
+  Engine hardening remains governed by the database vendor's own documentation, which each file names
+  in a scope note. They are intentionally all-manual — no probe here should imply authority over a
+  vendor's engine configuration.
+- **Non-security parameters are out of scope.** SAP also publishes mandatory *non-security* parameter
+  Notes for ECS (memory sizing and similar). Mixing operational tuning into a security baseline would
+  blur what a finding means.
 
 ## Usage
 

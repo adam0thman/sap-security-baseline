@@ -8,6 +8,11 @@
 #  original. SAP product names are trademarks of SAP SE; Oracle is a trademark of
 #  Oracle Corporation. This project is not affiliated with or endorsed by either.
 #
+#  ⚠ SAP Notes and Security Guides are REVISED CONTINUOUSLY. Where this file cites an
+#  SAP Note, the `sources` block records the exact Note version and release date it was
+#  derived from. ALWAYS open the current Note on SAP for Me and confirm nothing has
+#  changed before relying on these values for an audit or a system change.
+#
 #  Repository:      https://github.com/adam0thman/sap-security-baseline
 #  Corrections and feature requests: hello@adamoneservices.com
 #  Licence:         MIT (see LICENSE)

@@ -95,7 +95,6 @@
         "type": "object",
         "required": [
           "title",
-          "url",
           "retrieved"
         ],
         "additionalProperties": false,
@@ -108,6 +107,20 @@
             "format": "uri"
           },
           "retrieved": {
+            "type": "string",
+            "format": "date"
+          },
+          "sap_note": {
+            "description": "SAP Note / KBA number, when the source is a Note rather than a guide page.",
+            "type": "string",
+            "pattern": "^\\d{3,10}$"
+          },
+          "note_version": {
+            "description": "The Note version this file was derived from. SAP revises Notes continuously, so a mismatch against the live Note means this definition set may be out of date.",
+            "type": "string"
+          },
+          "note_released": {
+            "description": "Release date of that Note version.",
             "type": "string",
             "format": "date"
           }
@@ -197,7 +210,7 @@
               },
               "sap_note": {
                 "type": "string",
-                "pattern": "^\\d{6,10}$"
+                "pattern": "^\\d{3,10}$"
               },
               "label": {
                 "type": "string"

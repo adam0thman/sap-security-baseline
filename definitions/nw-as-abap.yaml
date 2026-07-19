@@ -8,27 +8,37 @@
 #  original. SAP product names are trademarks of SAP SE; this project is not
 #  affiliated with or endorsed by SAP SE.
 #
+#  ⚠ SAP Notes and Security Guides are REVISED CONTINUOUSLY. Where this file cites an
+#  SAP Note, the `sources` block records the exact Note version and release date it was
+#  derived from. ALWAYS open the current Note on SAP for Me and confirm nothing has
+#  changed before relying on these values for an audit or a system change.
+#
 #  Repository:      https://github.com/adam0thman/sap-security-baseline
 #  Corrections and feature requests: hello@adamoneservices.com
 #  Licence:         MIT (see LICENSE)
 # ─────────────────────────────────────────────────────────────────────────────
-spec_version: "1.0"
+spec_version: "1.3"
 id: nw-as-abap
 title: SAP NetWeaver AS ABAP / ABAP Platform — Security Baseline
 product:
   key: NW_AS_ABAP
   name: SAP NetWeaver Application Server for ABAP
   versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
-version: "2026.07.1"
-released: 2026-07-19
-supersedes: null
+version: "2026.07.2"
+released: "2026-07-19"
+supersedes: "2026.07.1"
 sources:
   - title: SAP NetWeaver Application Server for ABAP Security Guide
     url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
-    retrieved: 2026-07-19
+    retrieved: "2026-07-19"
   - title: SAP NetWeaver Security Guide
     url: https://help.sap.com/docs/SAP_NETWEAVER_750
-    retrieved: 2026-07-19
+    retrieved: "2026-07-19"
+  - title: Information on mandatory Security Parameters & Hardening requirements for ABAP systems in SAP Enterprise Cloud Services (ECS)
+    sap_note: "3250501"
+    note_version: "46"
+    note_released: "2026-05-15"
+    retrieved: "2026-07-19"
 
 controls:
   # ── Authentication ────────────────────────────────────────────────────────
@@ -43,10 +53,11 @@ controls:
       type: profile_parameter
       parameter: login/min_password_lng
       operator: gte
-      value: 8
+      value: 15
     remediation: >
-      Set login/min_password_lng to at least 8 (raise to match the customer's own
-      password policy where that policy is stricter) and restart the instance.
+      Set login/min_password_lng to at least 15, which is the value SAP mandates for ECS
+      systems. On-premise deployments should meet their own policy but 15 is the current
+      defensible baseline. Restart the instance after changing it.
     references:
       - url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
         label: AS ABAP Security Guide — User Administration and Authentication
@@ -80,8 +91,10 @@ controls:
       type: profile_parameter
       parameter: login/fails_to_user_lock
       operator: lte
-      value: 5
-    remediation: Set login/fails_to_user_lock to 5 or fewer.
+      value: 6
+    remediation: >
+      Set login/fails_to_user_lock to 6 or fewer, and never to 0 (which disables locking
+      entirely). 6 is the ECS mandatory value.
     tags: [baseline, password-policy]
 
   - id: ABAP-AUTHN-0004
@@ -150,10 +163,10 @@ controls:
       type: profile_parameter
       parameter: rdisp/gui_auto_logout
       operator: lte
-      value: 3600
+      value: 7200
     remediation: >
-      Set rdisp/gui_auto_logout to the policy idle timeout in seconds (must be
-      greater than 0; 0 disables auto-logout entirely).
+      Set rdisp/gui_auto_logout to the policy idle timeout in seconds — the ECS standard
+      is 3600 with a maximum of 7200. It must never be 0, which disables auto-logout.
     tags: [baseline]
 
   - id: ABAP-SESS-0002
@@ -253,8 +266,9 @@ controls:
       operator: in
       value: [6, 9]
     remediation: >
-      Set auth/rfc_authority_check to 6 (or 9 where the release supports it) after
-      confirming with SU53/ST01 traces that legitimate interfaces hold S_RFC.
+      Set auth/rfc_authority_check to 6 — the ECS mandatory value — after confirming with
+      SU53/ST01 traces that legitimate interfaces hold S_RFC. 1 is the lowest value ECS
+      permits for operational reasons.
     tags: [baseline, rfc]
 
   - id: ABAP-RFC-0005
@@ -462,3 +476,692 @@ controls:
       Run CVA or ATC with the security check variant over customer namespaces and
       remediate injection and missing-authority findings.
     tags: [custom-code]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # ECS / RISE mandatory hardening — SAP Note 3250501 v46 (2026-05-15).
+  # These are mandatory for SAP Enterprise Cloud Services (incl. RISE private
+  # cloud) systems. On-premise deployments should treat them as a strong
+  # baseline and justify any deviation against their own policy.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  # ── Password composition ──────────────────────────────────────────────────
+  - id: ABAP-AUTHN-0007
+    title: Passwords must contain at least one digit
+    category: authentication
+    severity: medium
+    rationale: >
+      Composition rules stop the password space collapsing onto predictable
+      all-lowercase words, which is what makes long passwords resist cracking.
+    check: {type: profile_parameter, parameter: login/min_password_digits, operator: gte, value: 1}
+    remediation: Set login/min_password_digits to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0008
+    title: Passwords must contain at least one letter
+    category: authentication
+    severity: medium
+    rationale: >
+      Part of the composition rule set; without it a policy can be satisfied by
+      digits alone, which is a far smaller search space than it appears.
+    check: {type: profile_parameter, parameter: login/min_password_letters, operator: gte, value: 1}
+    remediation: Set login/min_password_letters to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0009
+    title: Passwords must contain at least one lower-case letter
+    category: authentication
+    severity: medium
+    rationale: >
+      Mixed case widens the effective character set; SAP mandates it explicitly for
+      ECS rather than leaving it to the letter rule alone.
+    check: {type: profile_parameter, parameter: login/min_password_lowercase, operator: gte, value: 1}
+    remediation: Set login/min_password_lowercase to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0010
+    title: Passwords must contain at least one upper-case letter
+    category: authentication
+    severity: medium
+    rationale: >
+      Mixed case widens the effective character set; SAP mandates it explicitly for
+      ECS rather than leaving it to the letter rule alone.
+    check: {type: profile_parameter, parameter: login/min_password_uppercase, operator: gte, value: 1}
+    remediation: Set login/min_password_uppercase to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0011
+    title: Passwords must contain at least one special character
+    category: authentication
+    severity: medium
+    rationale: >
+      Special characters materially increase the cost of an offline cracking attempt
+      against a captured hash.
+    check: {type: profile_parameter, parameter: login/min_password_specials, operator: gte, value: 1}
+    remediation: Set login/min_password_specials to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0012
+    title: A new password must differ from the old one
+    category: authentication
+    severity: medium
+    rationale: >
+      Without a minimum difference, a forced rotation can be satisfied by changing a
+      single character, so the rotation achieves nothing.
+    check: {type: profile_parameter, parameter: login/min_password_diff, operator: gte, value: 1}
+    remediation: Set login/min_password_diff to at least 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0013
+    title: Password history prevents reuse
+    category: authentication
+    severity: medium
+    rationale: >
+      A short history lets users cycle back to a known password within a couple of
+      rotations, which defeats expiry entirely.
+    check: {type: profile_parameter, parameter: login/password_history_size, operator: gte, value: 15}
+    remediation: Set login/password_history_size to at least 15 (the ECS mandatory value).
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0014
+    title: Unused initial passwords expire quickly
+    category: authentication
+    severity: high
+    rationale: >
+      An initial password is communicated out-of-band and often sits unused in a
+      mailbox or ticket. Bounding its life limits how long that copy stays usable.
+    check: {type: profile_parameter, parameter: login/password_max_idle_initial, operator: lte, value: 7}
+    remediation: >
+      Set login/password_max_idle_initial to 7 days or fewer, and never 0 (unlimited).
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0015
+    title: Unused productive passwords expire
+    category: authentication
+    severity: medium
+    rationale: >
+      Accounts that stop being used keep working indefinitely otherwise, so a dormant
+      credential remains a live route in long after the person stopped needing it.
+    check: {type: profile_parameter, parameter: login/password_max_idle_productive, operator: lte, value: 90}
+    remediation: >
+      Set login/password_max_idle_productive between 30 and 90 days, and never 0.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0016
+    title: Locked users are not unlocked automatically at midnight
+    category: authentication
+    severity: high
+    rationale: >
+      Automatic overnight unlocking hands a brute-force attacker a fresh budget of
+      attempts every day and erases the operational signal that a lockout occurred.
+    check: {type: profile_parameter, parameter: login/failed_user_auto_unlock, operator: eq, value: 0}
+    remediation: Set login/failed_user_auto_unlock to 0 so unlocking is a deliberate act.
+    tags: [password-policy, ecs-mandatory, quick-win]
+
+  - id: ABAP-AUTHN-0017
+    title: Sessions end after repeated failed logon attempts
+    category: authentication
+    severity: medium
+    rationale: >
+      Terminating the session after a few failures slows automated guessing well before
+      the account lock threshold is reached.
+    check: {type: profile_parameter, parameter: login/fails_to_session_end, operator: lte, value: 3}
+    remediation: Set login/fails_to_session_end to 3 or fewer, and never 0.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0018
+    title: Existing passwords are forced to comply with the current policy
+    category: authentication
+    severity: medium
+    rationale: >
+      Tightening a password policy has no effect on passwords already set unless
+      compliance is enforced, so the estate can remain on legacy-strength credentials.
+    check: {type: profile_parameter, parameter: login/password_compliance_to_current_policy, operator: eq, value: 1}
+    remediation: Set login/password_compliance_to_current_policy = 1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0019
+    title: A strong password hashing algorithm is configured
+    category: authentication
+    severity: high
+    rationale: >
+      The hash algorithm decides how much an attacker gains from reading the password
+      tables. A modern salted, iterated hash makes a captured hash far more expensive
+      to crack than the legacy formats.
+    check:
+      type: profile_parameter
+      parameter: login/password_hash_algorithm
+      operator: matches
+      value: "iSSHA-512"
+    remediation: >
+      Set login/password_hash_algorithm to the ECS standard
+      (encoding=RFC2307, algorithm=iSSHA-512, iterations=15000, saltsize=256).
+    tags: [password-policy, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0020
+    title: Incoming CPIC logons are disabled
+    category: authentication
+    severity: high
+    rationale: >
+      CPIC is a legacy connection type that bypasses modern logon handling; leaving it
+      accepted keeps an old authentication path open that nothing current needs.
+    check: {type: profile_parameter, parameter: login/disable_cpic, operator: eq, value: 1}
+    remediation: Set login/disable_cpic = 1.
+    tags: [ecs-mandatory]
+
+  - id: ABAP-AUTHN-0021
+    title: Failed-logon error messages do not disclose whether a user exists
+    category: authentication
+    severity: medium
+    rationale: >
+      Detailed logon errors let an attacker enumerate valid user names before ever
+      attempting a password, turning a guessing attack into a targeted one.
+    check: {type: profile_parameter, parameter: login/show_detailed_errors, operator: eq, value: 0}
+    remediation: Set login/show_detailed_errors = 0.
+    tags: [ecs-mandatory, quick-win]
+
+  # ── Standard users (ECS rules) ────────────────────────────────────────────
+  - id: ABAP-AUTHN-0022
+    title: SAP* exists, is locked in every client and holds no profile
+    category: authentication
+    severity: critical
+    rationale: >
+      A real SAP* record must exist so the kernel never falls back to the built-in
+      emergency user, but that record must itself be inert — locked, password changed
+      and carrying no authorization profile, SAP_ALL least of all.
+    check:
+      type: manual
+      evidence_hint: >
+        Per-client evidence that SAP* exists, is locked, has had its password changed,
+        holds no profile (especially not SAP_ALL), and is in the expected user group in
+        client 000. On kernel 790+, also login/create_virtual_user_sapstar = 0.
+    remediation: >
+      Create and lock SAP* in every client, change its password, strip all profiles, and
+      disable the virtual super-user on kernel 790 and above.
+    tags: [standard-users, ecs-mandatory, critical-path]
+
+  - id: ABAP-AUTHN-0023
+    title: Unused standard users are deleted rather than left dormant
+    category: authentication
+    severity: high
+    rationale: >
+      EARLYWATCH and SAPCPIC are frequently unused yet remain as accounts with known
+      names and, too often, known passwords. TMSADM should not exist outside client 000.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence EARLYWATCH is deleted in all clients, SAPCPIC is deleted or has had its
+        password changed, and TMSADM is present only in client 000.
+    remediation: >
+      Delete EARLYWATCH in all clients; delete SAPCPIC if unused, otherwise change its
+      password; remove TMSADM from clients other than 000.
+    tags: [standard-users, ecs-mandatory]
+
+  - id: ABAP-AUTHN-0024
+    title: Unused clients are deleted
+    category: system-management
+    severity: high
+    rationale: >
+      Every retained client carries its own copy of the standard users and its own
+      authorization data. Client 066 in particular has no modern purpose and is a
+      well-known soft target.
+    check:
+      type: manual
+      evidence_hint: >
+        Client list showing 066 deleted and 001 deleted where not in use (including for
+        background tasks).
+    remediation: Delete client 066, and client 001 where nothing depends on it.
+    tags: [ecs-mandatory, attack-surface]
+
+  # ── Authorization ─────────────────────────────────────────────────────────
+  - id: ABAP-AUTHZ-0003
+    title: Global deactivation of authorization objects is not permitted
+    category: authorization
+    severity: critical
+    rationale: >
+      This switch can turn off authorization objects system-wide, silently removing
+      checks the entire security design assumes are running.
+    check: {type: profile_parameter, parameter: auth/object_disabling_active, operator: eq, value: "N"}
+    remediation: Set auth/object_disabling_active = N so global deactivation is not allowed.
+    tags: [ecs-mandatory, quick-win]
+
+  - id: ABAP-AUTHZ-0004
+    title: Authorization is checked on CALL TRANSACTION
+    category: authorization
+    severity: high
+    rationale: >
+      A weaker setting lets code call a transaction the user could not start directly,
+      creating a bypass around transaction-level restrictions.
+    check: {type: profile_parameter, parameter: auth/check/calltransaction, operator: in, value: [2, 3]}
+    remediation: Set auth/check/calltransaction to 3 (ECS standard; 2 is the lowest permitted).
+    tags: [ecs-mandatory]
+
+  - id: ABAP-AUTHZ-0005
+    title: External debugging is restricted in production
+    category: authorization
+    severity: high
+    rationale: >
+      External debugging allows inspection and manipulation of running processes,
+      including sessions belonging to other users, bypassing authorization at runtime.
+    check: {type: profile_parameter, parameter: abap/ext_debugging_possible, operator: in, value: [0, 2]}
+    remediation: >
+      Set abap/ext_debugging_possible = 2 in production (0 is allowed for DEV/TEST), and
+      control debug authorizations per SAP Note 65968.
+    references:
+      - sap_note: "65968"
+        label: Guidance on configuring debugging authorizations
+    tags: [ecs-mandatory]
+
+  # ── Gateway / RFC ─────────────────────────────────────────────────────────
+  - id: ABAP-RFC-0006
+    title: Gateway security properties are fully enabled
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      This bitmask governs which gateway security properties are active. Anything below
+      the full value silently leaves parts of the ACL enforcement switched off.
+    check: {type: profile_parameter, parameter: gw/reg_no_conn_info, operator: eq, value: 255}
+    remediation: Set gw/reg_no_conn_info = 255.
+    tags: [gateway, ecs-mandatory, quick-win]
+
+  - id: ABAP-RFC-0007
+    title: Remote start of gateway programs is disabled
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      Remote start allows an external endpoint to launch an RFC server program on the
+      host, which is remote code execution under the SAP OS user.
+    check: {type: profile_parameter, parameter: gw/rem_start, operator: eq, value: "DISABLED"}
+    remediation: Set gw/rem_start = DISABLED.
+    tags: [gateway, ecs-mandatory, quick-win]
+
+  - id: ABAP-RFC-0008
+    title: Gateway proxy ACL enforcement is enabled
+    category: interface-rfc
+    severity: high
+    rationale: >
+      Proxy connections through the gateway need the same ACL enforcement as direct
+      ones; from kernel 7.89 this switch activates the secure default automatically.
+    check: {type: profile_parameter, parameter: gw/acl_mode_proxy, operator: eq, value: 1}
+    remediation: >
+      Set gw/acl_mode_proxy = 1. On kernels below 7.89 maintain gw/prxy_info manually
+      with a restrictive default.
+    tags: [gateway, ecs-mandatory]
+
+  - id: ABAP-RFC-0009
+    title: Gateway ACL files contain no wildcard entries
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      An ACL file that exists but permits everything is worse than none, because it
+      creates the appearance of control. Wildcards in reginfo and prxyinfo defeat the
+      entire purpose of the ACL.
+    check:
+      type: manual
+      evidence_hint: >
+        Contents of secinfo, reginfo and prxyinfo showing the #VERSION header, permit
+        lines scoped to local/internal hosts, and no wildcard values (secinfo permits a
+        wildcard only in the USER field).
+    remediation: >
+      Maintain each ACL with its version header and explicit permit lines; remove
+      wildcard host, program and access values.
+    tags: [gateway, ecs-mandatory, critical-path]
+
+  - id: ABAP-RFC-0010
+    title: Gateway logging is enabled
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Gateway logging is the only record of external program starts and registrations —
+      exactly the activity the ACLs exist to constrain.
+    check:
+      type: manual
+      evidence_hint: gw/logging configured with an ACTION set and a periodic log switch.
+    remediation: Enable gw/logging per the ECS standard action set and switch it monthly.
+    tags: [gateway, audit, ecs-mandatory]
+
+  - id: ABAP-RFC-0011
+    title: RFC callback attacks are blocked by the strictest policy
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      An RFC callback lets a called system invoke a function back in the caller, under
+      the caller's credentials. Without the strict policy this is a known route from a
+      lower-tier system into a higher-tier one.
+    check: {type: profile_parameter, parameter: rfc/callback_security_method, operator: in, value: [1, 3]}
+    remediation: >
+      Set rfc/callback_security_method = 3. Value 1 is permitted only as a transition on
+      NetWeaver 7.40 systems, with a plan to reach 3.
+    tags: [rfc, ecs-mandatory, critical-path]
+
+  - id: ABAP-RFC-0012
+    title: RFC logon with an expired or initial password is rejected
+    category: interface-rfc
+    severity: high
+    rationale: >
+      If expired passwords still work over RFC, password expiry can be bypassed
+      entirely by using the interface path instead of the dialog logon.
+    check: {type: profile_parameter, parameter: rfc/reject_expired_passwd, operator: eq, value: 1}
+    remediation: Set rfc/reject_expired_passwd = 1.
+    tags: [rfc, ecs-mandatory, quick-win]
+
+  - id: ABAP-RFC-0013
+    title: Old logon tickets are not accepted for trusted connections
+    category: interface-rfc
+    severity: high
+    rationale: >
+      Accepting legacy ticket formats on trusted/trusting connections keeps a weaker
+      authentication path alive alongside the current one.
+    check: {type: profile_parameter, parameter: rfc/allowoldticket4tt, operator: eq, value: "no"}
+    remediation: Set rfc/allowoldticket4tt = no.
+    tags: [rfc, ecs-mandatory]
+
+  - id: ABAP-RFC-0014
+    title: Authorization is checked when queued RFC calls are played back
+    category: interface-rfc
+    severity: high
+    rationale: >
+      tRFC/qRFC units execute later, detached from the original dialog. Without a check
+      at playback, the authorization decision is effectively skipped.
+    check: {type: profile_parameter, parameter: rfc/authCheckInPlayback, operator: eq, value: 2}
+    remediation: Set rfc/authCheckInPlayback = 2.
+    references:
+      - sap_note: "3674774"
+        label: Authorization checks during playback of tRFC and qRFC calls
+    tags: [rfc, ecs-mandatory]
+
+  - id: ABAP-RFC-0015
+    title: ICF logon with an expired or initial password is rejected
+    category: web-http
+    severity: high
+    rationale: >
+      As with RFC, allowing expired passwords over HTTP/S lets a user bypass expiry by
+      calling SICF services instead of logging on interactively.
+    check: {type: profile_parameter, parameter: icf/reject_expired_passwd, operator: eq, value: 1}
+    remediation: Set icf/reject_expired_passwd = 1.
+    tags: [icf, ecs-mandatory, quick-win]
+
+  # ── Message server ────────────────────────────────────────────────────────
+  - id: ABAP-NET-0002
+    title: The message server access control list is configured and restrictive
+    category: network
+    severity: critical
+    rationale: >
+      The message server ACL decides which hosts may register as application servers.
+      A missing ACL, or one containing a wildcard host, lets an arbitrary machine join
+      the system as an application server.
+    check:
+      type: manual
+      evidence_hint: >
+        ms/acl_info pointing at an existing ACL file, and the file's contents confirmed
+        to contain no line with a wildcard host.
+    remediation: >
+      Point ms/acl_info at the ACL file and list only the legitimate application server
+      hosts; never leave a wildcard host entry.
+    tags: [message-server, ecs-mandatory, critical-path]
+
+  - id: ABAP-NET-0003
+    title: External message server monitoring is disabled
+    category: network
+    severity: medium
+    rationale: >
+      External monitoring access to the message server exposes internal landscape
+      information to anything that can reach the port.
+    check: {type: profile_parameter, parameter: ms/monitor, operator: eq, value: 0}
+    remediation: Set ms/monitor = 0 so only application servers may perform monitoring functions.
+    tags: [message-server, ecs-mandatory]
+
+  # ── SNC / TLS ─────────────────────────────────────────────────────────────
+  - id: ABAP-NET-0004
+    title: SNC data protection is set to the highest level
+    category: encryption
+    severity: high
+    rationale: >
+      Enabling SNC without setting the protection level can leave connections
+      authenticated but not encrypted, which is not what SNC is generally assumed to provide.
+    check: {type: profile_parameter, parameter: snc/data_protection/min, operator: eq, value: 3}
+    remediation: >
+      Set snc/data_protection/min, /max and /use to 3 (privacy protection).
+    tags: [encryption, snc, ecs-mandatory]
+
+  - id: ABAP-NET-0005
+    title: Internal system communication is secured
+    category: encryption
+    severity: high
+    rationale: >
+      Traffic between the instances of a system carries the same data as client traffic
+      and, unsecured, is readable by anything on the server network.
+    check: {type: profile_parameter, parameter: system/secure_communication, operator: eq, value: "ON"}
+    remediation: Set system/secure_communication = ON.
+    tags: [encryption, ecs-mandatory]
+
+  - id: ABAP-NET-0006
+    title: TLS is restricted to current protocol versions and cipher suites
+    category: encryption
+    severity: high
+    rationale: >
+      Legacy TLS versions and weak cipher suites remain negotiable unless explicitly
+      removed, so an otherwise-encrypted connection can be downgraded to a breakable one.
+    check:
+      type: manual
+      evidence_hint: >
+        ssl/ciphersuites and ssl/client_ciphersuites set to the SAP-recommended strings
+        restricting negotiation to TLS 1.2 and 1.3.
+    remediation: >
+      Use SAP's recommended cipher suite strings rather than hand-assembled ones, and
+      confirm kernel and CommonCryptoLib versions support them.
+    references:
+      - sap_note: "3318423"
+      - sap_note: "3346659"
+    tags: [encryption, tls, ecs-mandatory]
+
+  # ── Web / HTTP ────────────────────────────────────────────────────────────
+  - id: ABAP-WEB-0003
+    title: HTTP requests are redirected to HTTPS
+    category: web-http
+    severity: high
+    rationale: >
+      An open plain-HTTP port lets a client submit credentials in clear text before any
+      redirect can protect them.
+    check:
+      type: manual
+      evidence_hint: icm/HTTP/redirect_<n> configured to redirect all HTTP traffic to HTTPS.
+    remediation: Configure the ICM redirect rule so plain HTTP is redirected to the HTTPS port.
+    tags: [ecs-mandatory, tls]
+
+  - id: ABAP-WEB-0004
+    title: HTTP error pages do not disclose system detail
+    category: web-http
+    severity: medium
+    rationale: >
+      Verbose error pages and server headers reveal release, patch level and internal
+      paths, which is precisely the reconnaissance an attacker needs to pick an exploit.
+    check: {type: profile_parameter, parameter: is/HTTP/show_detailed_errors, operator: eq, value: "FALSE"}
+    remediation: >
+      Set is/HTTP/show_detailed_errors = FALSE and is/HTTP/show_server_header = FALSE.
+    tags: [ecs-mandatory, information-disclosure]
+
+  - id: ABAP-WEB-0005
+    title: The server does not advertise itself in HTTP responses
+    category: web-http
+    severity: low
+    rationale: >
+      The server header identifies the product and version to every client, including
+      automated scanners cataloguing targets.
+    check: {type: profile_parameter, parameter: is/HTTP/show_server_header, operator: eq, value: "FALSE"}
+    remediation: Set is/HTTP/show_server_header = FALSE.
+    tags: [ecs-mandatory, information-disclosure]
+
+  - id: ABAP-WEB-0006
+    title: XML processing rejects DTDs
+    category: web-http
+    severity: high
+    rationale: >
+      Permitting DTDs in XML input opens the door to entity-expansion denial of service
+      and external-entity attacks against the parser.
+    check: {type: profile_parameter, parameter: ixml/dtd_restriction, operator: eq, value: "prohibited"}
+    remediation: >
+      Set ixml/dtd_restriction = prohibited. Where an interface genuinely needs DTDs,
+      use the expansion-limited setting rather than removing the restriction.
+    references:
+      - sap_note: "2654391"
+    tags: [ecs-mandatory]
+
+  - id: ABAP-WEB-0007
+    title: Logon data is re-checked for existing HTTP sessions
+    category: session
+    severity: medium
+    rationale: >
+      Without a re-check, an established HTTP session can outlive the validity of the
+      credentials that created it.
+    check: {type: profile_parameter, parameter: icf/user_recheck, operator: eq, value: 1}
+    remediation: Set icf/user_recheck = 1.
+    tags: [ecs-mandatory]
+
+  - id: ABAP-WEB-0008
+    title: Known-critical ICF services are deactivated
+    category: web-http
+    severity: critical
+    rationale: >
+      SAP names a specific set of ICF services that must be switched off — RFC-over-HTTP
+      endpoints, certificate handling services, echo/report/test services and the BSP
+      sample applications. Several have been used directly in published exploit chains.
+    check:
+      type: manual
+      evidence_hint: >
+        SICF export confirming the services listed in the ECS note are inactive, notably
+        /sap/bc/soap/rfc, /sap/bc/webrfc, /sap/bc/xrfc, /sap/bc/xrfc_test, /sap/bc/report,
+        /sap/bc/FormToRfc, /sap/bc/echo, /sap/bc/error, the certmap/certreq services and
+        the BSP test applications.
+    remediation: >
+      Deactivate each listed service in SICF. The IDoc services may remain where a
+      documented business or integration scenario needs them.
+    tags: [icf, ecs-mandatory, critical-path]
+
+  - id: ABAP-WEB-0009
+    title: Protected web methods require authorization
+    category: web-http
+    severity: high
+    rationale: >
+      The management web methods expose process, parameter and log information; left
+      unprotected they hand out detailed system internals without authentication.
+    check: {type: profile_parameter, parameter: service/protectedwebmethods, operator: eq, value: "SDEFAULT"}
+    remediation: Set service/protectedwebmethods = SDEFAULT.
+    tags: [ecs-mandatory]
+
+  # ── Logging & traces ──────────────────────────────────────────────────────
+  - id: ABAP-LOG-0004
+    title: Security Audit Log is written to the database, not the file system
+    category: logging-audit
+    severity: high
+    rationale: >
+      File-system audit trails are readable by OS-level administrators and are awkward
+      to retain long term. Database storage keeps the trail under database access control
+      and supports archiving for the retention the audit requires.
+    check:
+      type: manual
+      evidence_hint: >
+        RSAU_CONFIG showing a database recording target (with archive interface in
+        production), a User=* / Client=* filter, and retention of at least one year.
+    remediation: >
+      Configure SAL to record to the database using the archive interface, filter on all
+      users and clients, and retain at least a year of data.
+    tags: [audit, ecs-mandatory]
+
+  - id: ABAP-LOG-0005
+    title: ICM security and HTTP logging are enabled
+    category: logging-audit
+    severity: medium
+    rationale: >
+      The ICM logs are the only record of HTTP-layer activity; without them, attacks
+      that never reach an ABAP authorization check leave no trace at all.
+    check:
+      type: manual
+      evidence_hint: >
+        icm/security_log and icm/HTTP/logging_0 configured with a defined level, size cap
+        and periodic switch.
+    remediation: Configure the ICM security log and HTTP logging per the ECS standard.
+    tags: [audit, ecs-mandatory]
+
+  - id: ABAP-LOG-0006
+    title: Traces hide security-sensitive data
+    category: logging-audit
+    severity: high
+    rationale: >
+      Traces can capture credentials and other sensitive values in clear text, creating
+      a secondary copy of secrets in files with weaker access control than the database.
+    check: {type: profile_parameter, parameter: rdisp/TRACE_HIDE_SEC_DATA, operator: eq, value: "ON"}
+    remediation: Set rdisp/TRACE_HIDE_SEC_DATA = ON.
+    tags: [ecs-mandatory, quick-win]
+
+  - id: ABAP-LOG-0007
+    title: Remote switching of trace levels is not accepted
+    category: logging-audit
+    severity: medium
+    rationale: >
+      If a remote party can raise the trace level, it can induce the system to write
+      sensitive data to disk and degrade performance at will.
+    check: {type: profile_parameter, parameter: rdisp/accept_remote_trace_level, operator: eq, value: 0}
+    remediation: >
+      Set rdisp/accept_remote_trace_level, gw/accept_remote_trace_level and
+      icm/accept_remote_trace_level all to 0.
+    tags: [ecs-mandatory]
+
+  # ── System management ─────────────────────────────────────────────────────
+  - id: ABAP-SYS-0003
+    title: Password hash tables are protected by a table authorization group
+    category: authorization
+    severity: critical
+    rationale: >
+      Read access to the password hash tables enables offline cracking of every account
+      in the system. Table-level authorization is what keeps generic table browsers away
+      from them.
+    check:
+      type: manual
+      evidence_hint: >
+        SE54/TDDAT evidence that the SPWD authorization group exists and is assigned to
+        USR02, USH02, VUSER001, USH02_ARC_TMP, USRPWDHISTORY and VUSR02_PWD.
+    remediation: >
+      Create the SPWD authorization group if absent and assign it to each of the password
+      hash tables.
+    tags: [ecs-mandatory, critical-path]
+
+  - id: ABAP-SYS-0004
+    title: Cryptographic key storage is protected by a table authorization group
+    category: authorization
+    severity: high
+    rationale: >
+      The PSE storage table holds the system's private key material; unrestricted read
+      access to it undermines every certificate the system presents or trusts.
+    check:
+      type: manual
+      evidence_hint: SE54/TDDAT evidence that table SSF_PSE_D is assigned to authorization group SPSE.
+    remediation: Assign SSF_PSE_D to the SPSE authorization group.
+    tags: [ecs-mandatory, encryption]
+
+  - id: ABAP-SYS-0005
+    title: SAP GUI scripting is disabled
+    category: system-management
+    severity: high
+    rationale: >
+      GUI scripting allows automated replay of user interaction, which can be used to
+      drive transactions on behalf of a logged-on user and to bulk-extract data.
+    check: {type: profile_parameter, parameter: sapgui/user_scripting, operator: eq, value: "FALSE"}
+    remediation: >
+      Set sapgui/user_scripting = FALSE. Where a business case genuinely requires it,
+      enable it per user rather than globally.
+    references:
+      - sap_note: "2715519"
+    tags: [ecs-mandatory]
+
+  - id: ABAP-SYS-0006
+    title: DBA Cockpit access is restricted
+    category: authorization
+    severity: medium
+    rationale: >
+      The DBA Cockpit reaches database-level maintenance functions from inside the
+      application, bypassing the separation between application and database administration.
+    check: {type: profile_parameter, parameter: dbs/dba/ccms_security_level, operator: eq, value: 1}
+    remediation: >
+      Set dbs/dba/ccms_security_level = 1 and dbs/dba/ccms_maintenance = 1 so only
+      authorised users with the required roles can execute DBA functions.
+    tags: [ecs-mandatory]

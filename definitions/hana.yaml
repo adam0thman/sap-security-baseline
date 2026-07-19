@@ -8,26 +8,36 @@
 #  original. SAP product names are trademarks of SAP SE; this project is not
 #  affiliated with or endorsed by SAP SE.
 #
+#  ⚠ SAP Notes and Security Guides are REVISED CONTINUOUSLY. Where this file cites an
+#  SAP Note, the `sources` block records the exact Note version and release date it was
+#  derived from. ALWAYS open the current Note on SAP for Me and confirm nothing has
+#  changed before relying on these values for an audit or a system change.
+#
 #  Repository:      https://github.com/adam0thman/sap-security-baseline
 #  Corrections and feature requests: hello@adamoneservices.com
 #  Licence:         MIT (see LICENSE)
 # ─────────────────────────────────────────────────────────────────────────────
-spec_version: "1.2"
+spec_version: "1.3"
 id: hana
 title: SAP HANA Platform — Security Baseline
 product:
   key: HANA
   name: SAP HANA Platform (database)
   versions: ["2.0 SPS04", "2.0 SPS05", "2.0 SPS06+"]
-version: "2026.07.1"
+version: "2026.07.2"
 released: "2026-07-19"
-supersedes: null
+supersedes: "2026.07.1"
 sources:
   - title: SAP HANA Security Guide for SAP HANA Platform (2.0 SPS05)
     url: https://help.sap.com/doc/eec734dbb0fd1014a61590fcb5411390/2.0.05/en-US/SAP_HANA_Security_Guide_en.pdf
     retrieved: "2026-07-19"
   - title: SAP HANA Security Guide — Critical security settings
     url: https://help.sap.com/docs/SAP_HANA_PLATFORM/b3ee5778bc2e4a089d3299b82ec762a7/c3d9889e3c9843bdb834e9eb56f1b041.html
+    retrieved: "2026-07-19"
+  - title: Information on mandatory Security Parameters & Hardening requirements for SAP HANA databases in SAP Global Cloud Operations (GCO)
+    sap_note: "3480723"
+    note_version: "5"
+    note_released: "2026-04-21"
     retrieved: "2026-07-19"
 
 # NOTE: `sql_query` checks are read-only SELECTs against the SYS catalog; run them
@@ -327,3 +337,206 @@ controls:
       Track HANA revisions against the maintenance strategy and include HANA in the
       monthly Patch Day comparison.
     tags: [patching, patch-day]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # GCO / ECS mandatory hardening — SAP KBA 3480723 v5 (2026-04-21).
+  # Set at DATABASE level. Parameters belong at SYSTEMDB level, not tenant level.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - id: HANA-AUTHN-0004
+    title: Administrator-given passwords must be changed on first use
+    category: authentication
+    severity: high
+    rationale: >
+      A password set by an administrator is known to at least two people and usually
+      travels through a ticket or a message. Forcing a change on first use bounds how
+      long that shared value stays valid.
+    check: {type: manual, evidence_hint: "force_first_password_change = true in the password policy."}
+    remediation: Set force_first_password_change = true.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0005
+    title: Password history prevents reuse
+    category: authentication
+    severity: medium
+    rationale: >
+      Without a sufficient history a user can rotate straight back to a known password,
+      which nullifies expiry.
+    check: {type: manual, evidence_hint: "last_used_passwords >= 15 (and never 0)."}
+    remediation: Set last_used_passwords to at least 15.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0006
+    title: Accounts lock after repeated invalid connect attempts
+    category: authentication
+    severity: high
+    rationale: >
+      The database accepts connections from the application tier and, too often, from
+      administrative networks as well. Without a lock threshold those endpoints permit
+      unlimited password guessing.
+    check: {type: manual, evidence_hint: "maximum_invalid_connect_attempts <= 6 (and never 0)."}
+    remediation: Set maximum_invalid_connect_attempts to 6 or fewer.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0007
+    title: Locked accounts stay locked until an administrator intervenes
+    category: authentication
+    severity: high
+    rationale: >
+      A timed auto-unlock gives an attacker a renewed budget of attempts on a schedule
+      and erases the signal that a lockout occurred.
+    check: {type: manual, evidence_hint: "password_lock_time = -1 (locked until manually released)."}
+    remediation: Set password_lock_time = -1.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0008
+    title: The lockout policy also applies to the SYSTEM user
+    category: authentication
+    severity: high
+    rationale: >
+      Exempting SYSTEM from lockout leaves the single most powerful account in the
+      database as the one place where unlimited password guessing is still possible.
+    check: {type: manual, evidence_hint: "password_lock_for_system_user = true."}
+    remediation: Set password_lock_for_system_user = true.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0009
+    title: Minimum password length is enforced at the database
+    category: authentication
+    severity: high
+    rationale: >
+      Database accounts sit below the application's authorization model; a weak password
+      here bypasses every control implemented above it.
+    check: {type: manual, evidence_hint: "minimal_password_length >= 15."}
+    remediation: >
+      Set minimal_password_length to at least 15 (the GCO mandatory value). Existing
+      passwords remain valid after an increase, so plan a rotation as well.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0010
+    title: Password layout requires mixed character classes
+    category: authentication
+    severity: medium
+    rationale: >
+      Length alone is insufficient if the password can be a single character class;
+      requiring several classes materially widens the search space.
+    check: {type: manual, evidence_hint: "password_layout requiring characters from at least three of the four classes."}
+    remediation: >
+      Set password_layout so passwords must draw on at least three of upper case, lower
+      case, numeric and special characters.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0011
+    title: Password lifetimes are bounded
+    category: authentication
+    severity: medium
+    rationale: >
+      Unbounded lifetimes mean a leaked credential — including one in an old backup or
+      handover document — remains valid indefinitely.
+    check: {type: manual, evidence_hint: "maximum_password_lifetime <= 90, maximum_unused_initial_password_lifetime <= 7, maximum_unused_productive_password_lifetime <= 90, none set to 0."}
+    remediation: >
+      Set the productive lifetime to 90 days or fewer and the unused-initial lifetime to
+      7 days or fewer. Ensure non-technical accounts are not set to never expire.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: HANA-AUTHN-0012
+    title: Connection errors do not disclose account state
+    category: authentication
+    severity: medium
+    rationale: >
+      Detailed connect errors reveal whether a user exists and whether it is locked or
+      deactivated, which lets an attacker enumerate valid accounts before guessing.
+    check: {type: manual, evidence_hint: "detailed_error_on_connect = false."}
+    remediation: Set detailed_error_on_connect = false.
+    tags: [ecs-mandatory, information-disclosure]
+
+  - id: HANA-LOG-0003
+    title: Auditing is enabled on both the system and tenant databases
+    category: logging-audit
+    severity: critical
+    rationale: >
+      Enabling auditing only on the tenants leaves the system database — where tenants
+      are created, dropped and reconfigured — unaudited, and vice versa. Both layers
+      need it for the trail to be complete.
+    check: {type: manual, evidence_hint: "Auditing state enabled on SYSTEMDB and on every tenant database."}
+    remediation: Enable auditing on the system database and on each tenant.
+    tags: [audit, ecs-mandatory, critical-path]
+
+  - id: HANA-LOG-0004
+    title: The audit trail is written to syslog
+    category: logging-audit
+    severity: high
+    rationale: >
+      An audit trail held in a database table can be read and altered by the very
+      administrators it is meant to hold accountable. Writing to syslog moves it beyond
+      their reach and allows shipping to a separate system.
+    check: {type: manual, evidence_hint: "Audit trail target configured to the syslog protocol rather than an internal table or CSV."}
+    remediation: >
+      Configure the audit trail target to syslog, and forward it to a log store the
+      database administrators cannot amend.
+    tags: [audit, ecs-mandatory]
+
+  - id: HANA-LOG-0005
+    title: Audit retention meets the mandated period
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Incidents are routinely discovered months after the fact; a trail that rolls over
+      first cannot answer the questions an investigation asks.
+    check: {type: manual, evidence_hint: "Audit log retention configured to at least the mandated period (GCO standard: 201 days)."}
+    remediation: Retain audit data for at least the mandated retention period.
+    tags: [audit, ecs-mandatory]
+
+  - id: HANA-LOG-0006
+    title: A catch-all ALL ACTION audit policy is not in use
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Auditing every action is not a stronger control — it degrades performance, can
+      destabilise the system, and buries the events that matter in noise.
+    check: {type: manual, evidence_hint: "Audit policy list showing no ALL ACTION policy enabled; customer policies follow the agreed naming convention."}
+    remediation: >
+      Replace any ALL ACTION policy with targeted policies for privileged and
+      security-relevant actions, and follow the agreed naming convention.
+    tags: [audit, ecs-mandatory]
+
+  - id: HANA-NET-0004
+    title: The minimum TLS protocol version is enforced
+    category: encryption
+    severity: high
+    rationale: >
+      Unless a floor is set, obsolete TLS versions stay negotiable and an otherwise
+      encrypted connection can be downgraded to a breakable one.
+    check: {type: manual, evidence_hint: "global.ini [communication] sslminprotocolversion set to TLS 1.2 or above, applied at SYSTEMDB level and not overridden at tenant level."}
+    remediation: >
+      Set the minimum protocol version in global.ini at system database level, and remove
+      any conflicting tenant-level override.
+    tags: [encryption, tls, ecs-mandatory]
+
+  - id: HANA-NET-0005
+    title: System replication traffic is encrypted and correctly bound
+    category: encryption
+    severity: high
+    rationale: >
+      Replication carries a continuous copy of the entire database between sites, often
+      across data-centre boundaries. Unencrypted, it is the richest possible target on
+      the network.
+    check: {type: manual, evidence_hint: "global.ini [system_replication_communication] enable_ssl = on, with listeninterface set appropriately for a single- or multi-node topology."}
+    remediation: >
+      Enable SSL for system replication, bind the listen interface correctly for the
+      topology, and secure both the metadata and data channels between sites.
+    tags: [encryption, replication, ecs-mandatory]
+
+  - id: HANA-ENC-0004
+    title: Persistence encryption is active on current revisions
+    category: encryption
+    severity: high
+    rationale: >
+      Persistence encryption is enabled by default from SPS07 onward, but systems
+      upgraded from earlier revisions do not gain it retroactively, so the assumption
+      that "it is on by default" can be wrong on exactly the older systems that need it.
+    check: {type: manual, evidence_hint: "Encryption status for data volumes, redo logs and backups, with the revision level noted."}
+    remediation: >
+      Verify data volume, redo log and backup encryption are active rather than assuming
+      the installation default, and enable them where an upgraded system lacks them.
+    tags: [encryption, ecs-mandatory]

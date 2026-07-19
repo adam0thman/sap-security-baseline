@@ -8,20 +8,25 @@
 #  original. SAP product names are trademarks of SAP SE; this project is not
 #  affiliated with or endorsed by SAP SE.
 #
+#  ⚠ SAP Notes and Security Guides are REVISED CONTINUOUSLY. Where this file cites an
+#  SAP Note, the `sources` block records the exact Note version and release date it was
+#  derived from. ALWAYS open the current Note on SAP for Me and confirm nothing has
+#  changed before relying on these values for an audit or a system change.
+#
 #  Repository:      https://github.com/adam0thman/sap-security-baseline
 #  Corrections and feature requests: hello@adamoneservices.com
 #  Licence:         MIT (see LICENSE)
 # ─────────────────────────────────────────────────────────────────────────────
-spec_version: "1.1"
+spec_version: "1.3"
 id: nw-as-java
 title: SAP NetWeaver AS Java — Security Baseline
 product:
   key: NW_AS_JAVA
   name: SAP NetWeaver Application Server for Java
   versions: ["7.31", "7.40", "7.50"]
-version: "2026.07.1"
+version: "2026.07.2"
 released: "2026-07-19"
-supersedes: null
+supersedes: "2026.07.1"
 sources:
   - title: SAP NetWeaver AS Java Security Guide — Standard Users
     url: https://help.sap.com/doc/saphelp_snc70/7.0/en-US/9f/d770424edcc553e10000000a1550b0/content.htm
@@ -31,6 +36,11 @@ sources:
     retrieved: "2026-07-19"
   - title: SAP NetWeaver AS Java — User Administration and Standard Users
     url: https://help.sap.com/docs/SAP_NETWEAVER_750/2f8b1599655d4544a3d9c6d1a9b6546b/03455e42c4185542e10000000a1550b0.html
+    retrieved: "2026-07-19"
+  - title: Information on mandatory Security Parameters & Hardening requirements for JAVA systems in SAP Enterprise Cloud Services
+    sap_note: "3381209"
+    note_version: "9"
+    note_released: "2026-04-09"
     retrieved: "2026-07-19"
 
 # NOTE: AS Java has no ABAP-style instance profile. Its equivalents are UME
@@ -107,10 +117,13 @@ controls:
       type: ume_property
       property: ume.logon.security_policy.password_min_length
       operator: gte
-      value: 8
+      value: 30
     remediation: >
-      Set the minimum length to at least 8, or to the customer's policy where that is
-      stricter, and apply it to every security policy profile in use.
+      SAP's elevated ECS standard for the Default security policy is 30. Customers are
+      advised to define their own policy profiles (for example CUSTOMER_MANAGED_USER and
+      CUSTOMER_MANAGED_TECH_USER) rather than relying on Default; where Default is used,
+      the elevated values are mandatory. On-premise deployments should meet their own
+      policy, with 15+ a reasonable floor.
     tags: [baseline, password-policy]
 
   - id: JAVA-AUTHN-0005
@@ -124,10 +137,10 @@ controls:
       type: ume_property
       property: ume.logon.security_policy.lock_after_invalid_attempts
       operator: lte
-      value: 5
+      value: 3
     remediation: >
-      Set the lockout threshold to 5 or fewer failed attempts and agree an unlock
-      process with the service desk.
+      Set the lockout threshold to 3 or fewer failed attempts (the ECS value) and agree
+      an unlock process with the service desk.
     tags: [baseline, password-policy]
 
   # ── Authorization ─────────────────────────────────────────────────────────
@@ -259,3 +272,259 @@ controls:
       Include the Java stack in the monthly Patch Day comparison and prioritise
       HotNews affecting externally-reachable services.
     tags: [patching, patch-day]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # ECS / RISE mandatory hardening — SAP Note 3381209 v9 (2026-04-09).
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - id: JAVA-WEB-0002
+    title: The invoker servlet is disabled globally
+    category: web-http
+    severity: critical
+    rationale: >
+      The generic invoker servlet allows arbitrary servlets to be addressed directly by
+      class name, bypassing the declared URL mappings and their security constraints.
+      It is a long-standing and heavily exploited remote-access path on AS Java.
+    check: {type: ume_property, property: EnableInvokerServletGlobally, operator: eq, value: "FALSE"}
+    remediation: Set EnableInvokerServletGlobally = FALSE.
+    references:
+      - sap_note: "1445998"
+        label: Disabling the invoker servlet
+    tags: [ecs-mandatory, critical-path, quick-win]
+
+  - id: JAVA-AUTHN-0006
+    title: Passwords expire on a defined interval
+    category: authentication
+    severity: medium
+    rationale: >
+      Without expiry a leaked Java credential stays valid indefinitely, and Java systems
+      are more often internet-facing than the ABAP stack.
+    check: {type: ume_property, property: ume.logon.security_policy.password_expire_days, operator: lte, value: 90}
+    remediation: Set password expiry to 90 days or fewer.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: JAVA-AUTHN-0007
+    title: Password history prevents reuse
+    category: authentication
+    severity: medium
+    rationale: >
+      A short history lets a user cycle straight back to a previous password, which
+      cancels out the benefit of forced rotation.
+    check: {type: ume_property, property: ume.logon.security_policy.password_history, operator: gte, value: 15}
+    remediation: Set the password history to at least 15.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: JAVA-AUTHN-0008
+    title: The logon policy is enforced at logon
+    category: authentication
+    severity: medium
+    rationale: >
+      A tightened policy only affects new passwords unless it is enforced at logon, so
+      accounts can persist indefinitely on credentials that predate the current rules.
+    check: {type: ume_property, property: ume.logon.security_policy.enforce_policy_at_logon, operator: eq, value: "true"}
+    remediation: Set enforce_policy_at_logon = true.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: JAVA-AUTHN-0009
+    title: Locked accounts are not unlocked automatically
+    category: authentication
+    severity: high
+    rationale: >
+      Automatic unlocking after a timeout gives an attacker a renewed budget of guesses
+      and removes the operational signal that a lockout happened.
+    check: {type: ume_property, property: ume.logon.security_policy.auto_unlock_time, operator: eq, value: 0}
+    remediation: Set auto_unlock_time = 0 so unlocking requires deliberate action.
+    tags: [password-policy, ecs-mandatory, quick-win]
+
+  - id: JAVA-AUTHN-0010
+    title: Password composition requires mixed case, alphanumerics and specials
+    category: authentication
+    severity: medium
+    rationale: >
+      Composition rules stop long passwords collapsing onto predictable single-class
+      strings, which is what keeps them resistant to offline cracking.
+    check: {type: ume_property, property: ume.logon.security_policy.password_special_char_required, operator: gte, value: 1}
+    remediation: >
+      Require at least one special character, one alphanumeric and mixed case
+      (password_special_char_required, password_alpha_numeric_required and
+      password_mix_case_required all set to 1).
+    tags: [password-policy, ecs-mandatory]
+
+  - id: JAVA-AUTHN-0011
+    title: The old password cannot form part of the new one
+    category: authentication
+    severity: medium
+    rationale: >
+      Allowing the previous password as a substring reduces a rotation to appending a
+      character, which is barely a change at all.
+    check: {type: ume_property, property: ume.logon.security_policy.oldpass_in_newpass_allowed, operator: eq, value: "FALSE"}
+    remediation: Set oldpass_in_newpass_allowed = FALSE.
+    tags: [password-policy, ecs-mandatory]
+
+  - id: JAVA-AUTHN-0012
+    title: Automatic logon with a stored user password is disabled
+    category: authentication
+    severity: high
+    rationale: >
+      Automatic logon weakens the anti-XSRF salt mechanism on the logon page; with it
+      off, the system always checks the salt parameter in the logon request.
+    check: {type: ume_property, property: ume.userpwd_automatic_logon, operator: eq, value: "FALSE"}
+    remediation: Set ume.userpwd_automatic_logon = FALSE.
+    tags: [ecs-mandatory, session]
+
+  - id: JAVA-SESS-0001
+    title: The logon ticket is marked as a secure cookie
+    category: session
+    severity: high
+    rationale: >
+      Without the secure flag the browser will send the logon ticket over plain HTTP,
+      exposing a bearer credential to anyone observing the network.
+    check: {type: ume_property, property: ume.logon.enforce_secure_cookie, operator: eq, value: "TRUE"}
+    remediation: Set ume.logon.enforce_secure_cookie = TRUE.
+    tags: [ecs-mandatory, session, quick-win]
+
+  - id: JAVA-SESS-0002
+    title: The logon ticket is marked HttpOnly
+    category: session
+    severity: high
+    rationale: >
+      HttpOnly prevents client-side script from reading the ticket, which is what turns
+      a cross-site scripting flaw into a full session takeover.
+    check: {type: ume_property, property: ume.logon.httponlycookie, operator: eq, value: "TRUE"}
+    remediation: Set ume.logon.httponlycookie = TRUE.
+    tags: [ecs-mandatory, session, quick-win]
+
+  - id: JAVA-SESS-0003
+    title: The logon ticket domain is not relaxed
+    category: session
+    severity: high
+    rationale: >
+      Relaxing the domain widens the set of hosts the ticket is sent to, so any less
+      trustworthy application in a sibling subdomain can receive it.
+    check: {type: ume_property, property: ume.logon.security.relax_domain.level, operator: eq, value: 0}
+    remediation: Set ume.logon.security.relax_domain.level = 0.
+    tags: [ecs-mandatory, session]
+
+  - id: JAVA-LOG-0002
+    title: The security audit log records the acting user and client address
+    category: logging-audit
+    severity: medium
+    rationale: >
+      An audit entry without the actor and the source address records that something
+      happened but not who did it or from where, which is of little use in an investigation.
+    check: {type: ume_property, property: ume.secaudit.log_actor, operator: eq, value: "TRUE"}
+    remediation: >
+      Set ume.secaudit.log_actor = TRUE and
+      ume.logon.security_policy.log_client_hostaddress = TRUE.
+    tags: [audit, ecs-mandatory]
+
+  - id: JAVA-WEB-0003
+    title: Invalid HTTP host headers are rejected
+    category: web-http
+    severity: high
+    rationale: >
+      Accepting an arbitrary Host header enables host-header injection, which can
+      poison generated links, caches and password-reset URLs.
+    check: {type: ume_property, property: icm/HTTP/allow_invalid_host_header, operator: eq, value: "FALSE"}
+    remediation: Set icm/HTTP/allow_invalid_host_header = FALSE.
+    tags: [ecs-mandatory]
+
+  - id: JAVA-WEB-0004
+    title: HTTP error pages and headers do not disclose system detail
+    category: web-http
+    severity: medium
+    rationale: >
+      Verbose errors and server headers reveal product, version and internal paths — the
+      reconnaissance an attacker needs to select a working exploit.
+    check: {type: ume_property, property: is/HTTP/show_detailed_errors, operator: eq, value: "FALSE"}
+    remediation: >
+      Set is/HTTP/show_detailed_errors = FALSE and is/HTTP/show_server_header = FALSE.
+    tags: [ecs-mandatory, information-disclosure]
+
+  - id: JAVA-WEB-0005
+    title: Protected web methods are restricted
+    category: web-http
+    severity: high
+    rationale: >
+      The management web methods expose process lists, parameters, log files and the
+      alert tree; unprotected they hand out detailed internals without authentication.
+    check:
+      type: manual
+      evidence_hint: >
+        service/protectedwebmethods set to the ECS value, protecting the process list,
+        parameter, log file and access point methods.
+    remediation: Set service/protectedwebmethods to the ECS-specified protected set.
+    tags: [ecs-mandatory]
+
+  - id: JAVA-NET-0003
+    title: The telnet administration port is not exposed
+    category: network
+    severity: critical
+    rationale: >
+      Telnet administration is unencrypted and grants configuration control. In the ECS
+      standard it is bound to localhost with the port disabled, rather than being
+      reachable across the network.
+    check:
+      type: manual
+      evidence_hint: >
+        ICM server port configuration showing the telnet port disabled or bound to
+        localhost only.
+    remediation: >
+      Disable the telnet port or bind it to localhost, and administer through the
+      SSL-protected paths instead.
+    tags: [ecs-mandatory, network, critical-path]
+
+  - id: JAVA-NET-0004
+    title: TLS is restricted to current protocol versions and cipher suites
+    category: encryption
+    severity: high
+    rationale: >
+      Legacy TLS versions and weak suites stay negotiable unless explicitly removed, so
+      an otherwise-encrypted session can be downgraded to a breakable one.
+    check:
+      type: manual
+      evidence_hint: >
+        ssl/ciphersuites and ssl/client_ciphersuites set to SAP's recommended strings for
+        TLS 1.2/1.3, with SNI enabled on client and ICM.
+    remediation: >
+      Use SAP's recommended cipher suite strings rather than hand-assembled ones, and
+      confirm kernel and CommonCryptoLib versions support them.
+    references:
+      - sap_note: "3318423"
+      - sap_note: "3346659"
+    tags: [encryption, tls, ecs-mandatory]
+
+  - id: JAVA-NET-0005
+    title: Client certificate verification is enabled on HTTPS
+    category: encryption
+    severity: medium
+    rationale: >
+      Where the deployment relies on client certificates, the server must actually
+      request and verify one, otherwise the control is decorative.
+    check: {type: ume_property, property: icm/HTTPS/verify_client, operator: eq, value: 1}
+    remediation: Set icm/HTTPS/verify_client = 1.
+    tags: [ecs-mandatory, tls]
+
+  - id: JAVA-RFC-0001
+    title: Gateway ACLs and enforcement are configured on the Java stack
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      The Java stack runs its own gateway with the same exposure as the ABAP one: without
+      ACL files and enforcement, external programs can be started or registered against it.
+    check: {type: ume_property, property: gw/acl_mode, operator: eq, value: 1}
+    remediation: >
+      Set gw/acl_mode = 1 and gw/reg_no_conn_info = 255, and point gw/sec_info,
+      gw/reg_info and gw/prxy_info at maintained, wildcard-free ACL files.
+    tags: [gateway, ecs-mandatory, critical-path]
+
+  - id: JAVA-NET-0006
+    title: The message server is not externally monitorable
+    category: network
+    severity: medium
+    rationale: >
+      External monitoring access to the message server discloses internal landscape
+      information to anything that can reach the port.
+    check: {type: ume_property, property: ms/monitor, operator: eq, value: 0}
+    remediation: Set ms/monitor = 0 and point ms/acl_info at a maintained ACL file.
+    tags: [message-server, ecs-mandatory]

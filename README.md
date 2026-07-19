@@ -24,123 +24,53 @@ something you can *check*.
   remediation: Set login/no_automatic_user_sapstar = 1 in DEFAULT and restart.
 ```
 
----
-
-## Why this exists
-
-SAP publishes thorough security guidance, but it is prose spread across dozens of pages per
-product, it changes between releases, and none of it is directly comparable against a system
-you actually operate. Every security review therefore starts by re-reading the same documents
-and hand-building the same spreadsheet.
-
-This project does that work once, in a stable format:
-
-- **Checkable, not narrative.** Where a guide names a profile parameter, a table, an ICF
-  service or a standard user, the control carries the exact artefact and expected value.
-- **Versioned and diffable.** Definition sets use CalVer and declare what they supersede, so
-  you can see precisely what changed between releases of the baseline itself.
-- **Stable control ids.** A finding recorded against `ABAP-AUTHN-0004` still means the same
-  control a year later. Ids are never renumbered or recycled.
-- **Tool-agnostic.** The YAML plus the JSON Schema is the entire contract. Consume it from
-  Python, Java, TypeScript, a spreadsheet, or your own audit tooling.
-
-It is **not** a scanner. This repository is the *definition* of what good looks like; running
-the checks against a system is the job of whatever tool you point at it.
-
----
-
-## Repository structure
-
-```
-schema/
-  definition.schema.json     The contract. JSON Schema (draft 2020-12), language-agnostic.
-
-definitions/
-  nw-as-abap.yaml            SAP NetWeaver AS ABAP / ABAP Platform
-  nw-as-java.yaml            SAP NetWeaver AS Java
-  sap-gateway.yaml           SAP Gateway (OData / Fiori Foundation)
-  bw.yaml                    SAP Business Warehouse (classic, on NetWeaver)
-  bw4hana.yaml               SAP BW/4HANA
-  solman.yaml                SAP Solution Manager 7.2
-  hana.yaml                  SAP HANA Platform (database)
-  oracle.yaml                Oracle Database under SAP
-  sqlserver.yaml             Microsoft SQL Server under SAP
-  db2.yaml                   IBM Db2 for LUW under SAP
-  ase.yaml                   SAP ASE under SAP
-  btp.yaml                   SAP Business Technology Platform
-
-tools/
-  validate.py                Validates definitions: schema + rules JSON Schema can't express
-  selftest.py                Proves the validator actually rejects malformed input
-  requirements.txt           PyYAML + jsonschema
-  EXTRACTION_PROMPT.md       The repeatable procedure for regenerating definitions from SAP docs
-
-.github/workflows/
-  validate.yml               CI: validates every definition on push and pull request
-```
-
-### Anatomy of a definition file
-
-| Field | Meaning |
-|---|---|
-| `spec_version` | Version of the schema the file conforms to |
-| `id` | Stable machine id for the set; matches the filename |
-| `product.key` | Product family (`NW_AS_ABAP`, `SAP_GATEWAY`, `BW`, …) — how you match a set to a system |
-| `version` | CalVer `YYYY.MM.PATCH` for the definition set |
-| `supersedes` | The version this release replaces; the validator enforces forward movement |
-| `sources` | The SAP guides the controls were derived from, with retrieval dates |
-| `controls[]` | The controls themselves |
-
-Each control carries `id`, `title`, `category`, `severity`, `rationale`, `check`, `remediation`,
-and optional `references`, `applies_to` and `tags`.
-
-### How controls are verified
-
-Every control declares a `check`. One type is manual; the rest are machine-checkable, and a
-consuming tool implements one probe per type.
-
-| `check.type` | Verified by reading | Example |
-|---|---|---|
-| `profile_parameter` | Instance profile / `RSPARAM` | `login/min_password_lng >= 8` |
-| `ume_property` | AS Java UME property | `ume.superadmin.activated = false` |
-| `sql_query` | Read-only SELECT on the DB catalog | HANA `SYSTEM` user deactivated |
-| `table_query` | A table via RFC | Production clients closed in `T000` |
-| `user_query` | User master data | No standard user left on a default password |
-| `gateway_acl` | `secinfo` / `reginfo` | ACL exists and is restrictive |
-| `icf_service` | SICF service state | `/sap/bc/soap/rfc` disabled |
-| `manual` | A human, with evidence | System change option in SE06 |
-
-The mix is deliberate. A large part of any Security Guide is procedural and no probe can settle
-it; marking those honestly as `manual` (each with an `evidence_hint`) is what keeps the automated
-subset trustworthy.
-
----
-
-## Coverage
-
-| Definition set | Product key | Controls | Status |
-|---|---|---:|---|
-| `nw-as-abap` | `NW_AS_ABAP` | 25 (18 auto / 7 manual) | Published |
-| `nw-as-java` | `NW_AS_JAVA` | 12 (3 auto / 9 manual) | Published |
-| `sap-gateway` | `SAP_GATEWAY` | 8 (2 auto / 6 manual) | Published |
-| `bw` | `BW` | 8 (1 auto / 7 manual) | Published |
-| `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | Published |
-| `solman` | `SOLMAN` | 10 (2 auto / 8 manual) | Published |
-| `hana` | `HANA` | 16 (4 auto / 12 manual) | Published |
-| `oracle` | `ORACLE` | 9 (manual) | Published |
-| `sqlserver` | `SQLSERVER` | 10 (manual) | Published |
-| `db2` | `DB2` | 9 (manual) | Published |
-| `ase` | `ASE` | 9 (manual) | Published |
-| `btp` | `BTP` | 13 (manual) | Published |
+> ## ⚠️ SAP Notes change — always check the current version
+>
+> Several definition sets derive their exact values from **SAP Notes and KBAs, which SAP
+> revises continuously.** A Note that mandated one value last quarter may mandate another
+> today.
+>
+> Every Note-derived source records the **exact Note version and release date** it was
+> built from, in the file's `sources` block. Before relying on any of this for an audit,
+> a customer report, or a system change: **open the current Note on SAP for Me, compare
+> the version, and confirm nothing has moved.**
+>
+> Notes this repository currently tracks:
+>
+> | Definition set | SAP Note / KBA | Version used | Released |
+> |---|---|---|---|
+> | `hana` | 3480723 | v5 | 2026-04-21 |
+> | `ase` | `ASE` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `btp` | `BTP` | 13 (0 auto / 13 manual) | 2026.07.1 |
+| `bw` | `BW` | 8 (1 auto / 7 manual) | 2026.07.1 |
+| `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | 2026.07.1 |
+| `db2` | `DB2` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `hana` | `HANA` | 32 (4 auto / 28 manual) | 2026.07.2 |
+| `nw-as-abap` | `NW_AS_ABAP` | 76 (56 auto / 20 manual) | 2026.07.2 |
+| `nw-as-java` | `NW_AS_JAVA` | 32 (20 auto / 12 manual) | 2026.07.2 |
+| `oracle` | `ORACLE` | 9 (0 auto / 9 manual) | 2026.07.1 |
+| `sap-gateway` | `SAP_GATEWAY` | 8 (2 auto / 6 manual) | 2026.07.1 |
+| `solman` | `SOLMAN` | 10 (2 auto / 8 manual) | 2026.07.1 |
+| `sqlserver` | `SQLSERVER` | 10 (0 auto / 10 manual) | 2026.07.1 |
 | — | `MAXDB` | — | Backlog |
 
-**141 controls across 12 products.**
+**228 controls across 12 products.**
 
 Two things to understand about how these fit together:
 
 - **Sets layer, they don't duplicate.** BW, BW/4HANA, Gateway and Solution Manager all run on
   AS ABAP, so `nw-as-abap` applies *in addition* to those sets. Each file states its layering in a
   comment above `controls`.
+- **Some values are the SAP cloud (ECS/RISE/GCO) mandatory standard.** The AS ABAP, AS Java
+  and HANA sets incorporate SAP's mandatory hardening Notes for SAP Enterprise Cloud Services.
+  Those values are stricter than general on-premise guidance — for example a 15-character
+  minimum password length on ABAP — and controls carrying them are tagged **`ecs-mandatory`**.
+  If you run ECS or RISE they are compulsory; on-premise, treat them as a strong baseline and
+  justify deviations against your own policy. Filter the tag to separate the two regimes.
+- **Non-security parameters are out of scope.** SAP also publishes mandatory *non-security*
+  parameter Notes for ECS (performance and stability — memory sizing and similar). Those are
+  deliberately excluded: this is a security baseline, and mixing operational tuning into it
+  would blur what a finding means.
 - **The third-party database sets are deliberately scoped.** `oracle`, `sqlserver`, `db2` and `ase`
   cover the **SAP-managed surface** — the accounts SAP creates, how the application server
   authenticates, the network path, backups and patch cadence. Engine-level hardening remains

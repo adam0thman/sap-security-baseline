@@ -1,0 +1,451 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+spec_version: "1.0"
+id: nw-as-abap
+title: SAP NetWeaver AS ABAP / ABAP Platform — Security Baseline
+product:
+  key: NW_AS_ABAP
+  name: SAP NetWeaver Application Server for ABAP
+  versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
+version: "2026.07.1"
+released: 2026-07-19
+supersedes: null
+sources:
+  - title: SAP NetWeaver Application Server for ABAP Security Guide
+    url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
+    retrieved: 2026-07-19
+  - title: SAP NetWeaver Security Guide
+    url: https://help.sap.com/docs/SAP_NETWEAVER_750
+    retrieved: 2026-07-19
+
+controls:
+  # ── Authentication ────────────────────────────────────────────────────────
+  - id: ABAP-AUTHN-0001
+    title: Minimum password length is enforced
+    category: authentication
+    severity: high
+    rationale: >
+      Short passwords fall quickly to offline cracking of downloaded hashes. The
+      instance profile is the only place this is enforced for every client at once.
+    check:
+      type: profile_parameter
+      parameter: login/min_password_lng
+      operator: gte
+      value: 8
+    remediation: >
+      Set login/min_password_lng to at least 8 (raise to match the customer's own
+      password policy where that policy is stricter) and restart the instance.
+    references:
+      - url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
+        label: AS ABAP Security Guide — User Administration and Authentication
+    tags: [baseline, password-policy]
+
+  - id: ABAP-AUTHN-0002
+    title: Passwords expire on a defined interval
+    category: authentication
+    severity: medium
+    rationale: >
+      A value of 0 disables expiry entirely, so a leaked credential stays valid
+      indefinitely. Interactive users should be forced to rotate.
+    check:
+      type: profile_parameter
+      parameter: login/password_expiration_time
+      operator: lte
+      value: 90
+    remediation: >
+      Set login/password_expiration_time to the customer's policy interval (commonly
+      90 days or fewer). Confirm it is not 0, which disables expiry.
+    tags: [baseline, password-policy]
+
+  - id: ABAP-AUTHN-0003
+    title: Failed-logon attempts lock the account
+    category: authentication
+    severity: high
+    rationale: >
+      Without a lock threshold the logon endpoint is an unlimited online guessing
+      oracle, and the Security Audit Log fills with noise rather than a hard stop.
+    check:
+      type: profile_parameter
+      parameter: login/fails_to_user_lock
+      operator: lte
+      value: 5
+    remediation: Set login/fails_to_user_lock to 5 or fewer.
+    tags: [baseline, password-policy]
+
+  - id: ABAP-AUTHN-0004
+    title: Automatic SAP* fallback user is disabled
+    category: authentication
+    severity: critical
+    rationale: >
+      If the SAP* user record is deleted, the kernel falls back to a hard-coded
+      built-in SAP* with a well-known default password and unrestricted power,
+      bypassing every authorization check. This is a classic full-system compromise.
+    check:
+      type: profile_parameter
+      parameter: login/no_automatic_user_sapstar
+      operator: eq
+      value: 1
+    remediation: >
+      Set login/no_automatic_user_sapstar = 1 in the DEFAULT profile and restart.
+      Verify a real SAP* user record exists and is locked in every client.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: ABAP-AUTHN-0005
+    title: Downwards-compatible (weak) password hashes are not stored
+    category: authentication
+    severity: high
+    rationale: >
+      Legacy compatibility keeps a weak hash alongside the strong one; an attacker
+      who reads the user table simply cracks the weak variant, nullifying the strong one.
+    check:
+      type: profile_parameter
+      parameter: login/password_downwards_compatibility
+      operator: eq
+      value: 0
+    remediation: >
+      Set login/password_downwards_compatibility = 0 once no legacy system in the
+      landscape still needs the old hash, then clear residual weak hashes.
+    tags: [baseline, password-policy]
+
+  - id: ABAP-AUTHN-0006
+    title: Standard users no longer carry their default passwords
+    category: authentication
+    severity: critical
+    rationale: >
+      SAP*, DDIC, EARLYWATCH, SAPCPIC and TMSADM ship with published default
+      passwords. Any of them left unchanged is a direct, unauthenticated route in.
+    check:
+      type: user_query
+      criterion: default_password_unchanged
+      users: ["SAP*", "DDIC", "EARLYWATCH", "SAPCPIC", "TMSADM"]
+      assert: no_rows
+    remediation: >
+      Change the passwords in every client (including 000/001/066 where present),
+      lock the ones not in operational use, and re-run RSUSR003 to confirm.
+    references:
+      - label: Report RSUSR003 lists standard users and their password status
+    tags: [baseline, standard-users, quick-win]
+
+  # ── Session ───────────────────────────────────────────────────────────────
+  - id: ABAP-SESS-0001
+    title: Idle SAP GUI sessions are terminated automatically
+    category: session
+    severity: medium
+    rationale: >
+      An unattended logged-on workstation is an authenticated session anyone walking
+      past can use. Auto-logout bounds that window.
+    check:
+      type: profile_parameter
+      parameter: rdisp/gui_auto_logout
+      operator: lte
+      value: 3600
+    remediation: >
+      Set rdisp/gui_auto_logout to the policy idle timeout in seconds (must be
+      greater than 0; 0 disables auto-logout entirely).
+    tags: [baseline]
+
+  - id: ABAP-SESS-0002
+    title: Logon tickets are only transmitted over HTTPS
+    category: session
+    severity: high
+    rationale: >
+      An SSO logon ticket is a bearer credential. Sent over plain HTTP it can be
+      captured in transit and replayed for the life of the ticket.
+    check:
+      type: profile_parameter
+      parameter: login/ticket_only_by_https
+      operator: eq
+      value: 1
+    remediation: Set login/ticket_only_by_https = 1 and ensure the ICM has a valid TLS setup.
+    tags: [baseline, sso]
+
+  # ── Network / encryption ──────────────────────────────────────────────────
+  - id: ABAP-NET-0001
+    title: SNC is enabled for DIAG and RFC traffic
+    category: encryption
+    severity: high
+    rationale: >
+      Without SNC, SAP GUI (DIAG) and RFC traffic — including credentials and
+      business data — crosses the network unencrypted and is trivially sniffable.
+    check:
+      type: profile_parameter
+      parameter: snc/enable
+      operator: eq
+      value: 1
+    remediation: >
+      Roll out SNC (or TLS for HTTP paths) across DIAG and RFC, then enforce with
+      snc/data_protection/min and the accept_insecure_* parameters.
+    references:
+      - label: See also the SNC configuration section of the AS ABAP Security Guide
+    tags: [baseline, encryption]
+
+  # ── Gateway / RFC interfaces ──────────────────────────────────────────────
+  - id: ABAP-RFC-0001
+    title: Gateway access control list secinfo exists and is restrictive
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      With no secinfo ACL the gateway will start arbitrary external programs on the
+      host, which is remote code execution as the <sid>adm OS user.
+    check:
+      type: gateway_acl
+      file: secinfo
+      assert: exists_and_restrictive
+    remediation: >
+      Create secinfo with explicit allow entries only, avoid wildcard USER=* /
+      HOST=* combinations, and reload with the gateway monitor.
+    tags: [baseline, gateway, quick-win]
+
+  - id: ABAP-RFC-0002
+    title: Gateway registration ACL reginfo exists and is restrictive
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      Without reginfo any host that can reach the gateway port may register a
+      external RFC server program and intercept or inject RFC traffic.
+    check:
+      type: gateway_acl
+      file: reginfo
+      assert: exists_and_restrictive
+    remediation: >
+      Create reginfo restricting registration to known program IDs and hosts; deny
+      by default and add explicit allows.
+    tags: [baseline, gateway, quick-win]
+
+  - id: ABAP-RFC-0003
+    title: Gateway ACL enforcement is switched on
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      The ACL files are inert unless the gateway is told to enforce them; a present
+      secinfo/reginfo with enforcement off provides no protection at all.
+    check:
+      type: profile_parameter
+      parameter: gw/acl_mode
+      operator: eq
+      value: 1
+    remediation: Set gw/acl_mode = 1 alongside populated secinfo/reginfo files.
+    tags: [baseline, gateway]
+
+  - id: ABAP-RFC-0004
+    title: Authorization checks are performed for RFC calls
+    category: authorization
+    severity: high
+    rationale: >
+      This parameter governs whether S_RFC is evaluated on incoming RFC function
+      calls. Lowering it to skip checks lets any authenticated RFC user call any
+      remote-enabled function module.
+    check:
+      type: profile_parameter
+      parameter: auth/rfc_authority_check
+      operator: in
+      value: [6, 9]
+    remediation: >
+      Set auth/rfc_authority_check to 6 (or 9 where the release supports it) after
+      confirming with SU53/ST01 traces that legitimate interfaces hold S_RFC.
+    tags: [baseline, rfc]
+
+  - id: ABAP-RFC-0005
+    title: RFC destinations do not store dialog-user credentials
+    category: interface-rfc
+    severity: high
+    rationale: >
+      A stored-credential destination pointing at a higher-privileged system lets
+      anyone who can execute the destination hop systems as that user — the classic
+      DEV-to-PRD escalation path.
+    check:
+      type: manual
+      evidence_hint: >
+        SM59 export showing trusted/technical-user destinations only, with no stored
+        dialog users on destinations that target a higher-tier system.
+    remediation: >
+      Replace stored dialog credentials with communication users holding minimal
+      authorizations, or trusted-system relationships with proper S_RFCACL scoping.
+    tags: [rfc, landscape]
+
+  # ── Web / HTTP ────────────────────────────────────────────────────────────
+  - id: ABAP-WEB-0001
+    title: Legacy SOAP RFC endpoint is disabled
+    category: web-http
+    severity: high
+    rationale: >
+      This ICF service exposes RFC over HTTP and has been the entry point for
+      several remote exploitation chains. It is rarely required in practice.
+    check:
+      type: icf_service
+      service_path: /sap/bc/soap/rfc
+      assert: disabled
+    remediation: >
+      Deactivate the service in SICF unless a documented interface needs it; if it
+      is needed, restrict it by authorization and network path.
+    tags: [baseline, icf, quick-win]
+
+  - id: ABAP-WEB-0002
+    title: Unused ICF services are deactivated
+    category: web-http
+    severity: medium
+    rationale: >
+      A default SICF tree exposes far more endpoints than any one customer uses, and
+      each active service is attack surface that must be patched.
+    check:
+      type: manual
+      evidence_hint: >
+        SICF service list with the actively-used services documented and the rest
+        shown as inactive.
+    remediation: >
+      Work through the SAP guidance on which ICF services to deactivate and keep an
+      approved list of the services the customer genuinely uses.
+    references:
+      - sap_note: "1422273"
+        label: Guidance on ICF service activation/deactivation
+    tags: [icf]
+
+  # ── Logging & audit ───────────────────────────────────────────────────────
+  - id: ABAP-LOG-0001
+    title: Security Audit Log is enabled
+    category: logging-audit
+    severity: high
+    rationale: >
+      Without SAL there is no reliable record of logons, RFC calls, or debug
+      activity — incidents cannot be reconstructed and privileged misuse is invisible.
+    check:
+      type: profile_parameter
+      parameter: rsau/enable
+      operator: eq
+      value: 1
+    remediation: >
+      Enable rsau/enable, size rsau/max_diskspace_* appropriately, and configure the
+      filters in SM19/RSAU_CONFIG to cover logons, RFC, debug and config changes.
+    tags: [baseline, audit, monitoring]
+
+  - id: ABAP-LOG-0002
+    title: Table logging is active for critical tables
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Table logging is what makes changes to customizing and security-relevant
+      tables auditable after the fact; it must be on at the instance level and on
+      the individual tables' technical settings.
+    check:
+      type: profile_parameter
+      parameter: rec/client
+      operator: eq
+      value: "ALL"
+    remediation: >
+      Set rec/client = ALL (or the explicit list of productive clients) and confirm
+      the log-data-changes flag on the tables that matter.
+    tags: [audit]
+
+  - id: ABAP-LOG-0003
+    title: Audit log retention meets the customer's policy
+    category: logging-audit
+    severity: medium
+    rationale: >
+      Logs that roll over before anyone reviews them provide no forensic value; the
+      retention window must outlast realistic detection time.
+    check:
+      type: manual
+      evidence_hint: SAL retention configuration plus evidence of archiving/offload.
+    remediation: >
+      Size the audit log files and archiving so retention matches the contractual or
+      regulatory requirement.
+    tags: [audit]
+
+  # ── Authorization ─────────────────────────────────────────────────────────
+  - id: ABAP-AUTHZ-0001
+    title: No dialog users hold SAP_ALL in a productive client
+    category: authorization
+    severity: critical
+    rationale: >
+      SAP_ALL defeats the entire authorization concept and segregation of duties.
+      Emergency access should be time-boxed via firefighter, not standing.
+    check:
+      type: user_query
+      criterion: type_dialog_with_sap_all
+      assert: no_rows
+    remediation: >
+      Remove standing SAP_ALL from dialog users; move emergency access to a
+      controlled firefighter process with logging and approval.
+    tags: [baseline, sod, quick-win]
+
+  - id: ABAP-AUTHZ-0002
+    title: Developer and debug authorizations are absent from production
+    category: authorization
+    severity: high
+    rationale: >
+      Debug-with-replace lets a holder bypass any authorization check in flight and
+      alter running business data, which is effectively unlimited privilege.
+    check:
+      type: manual
+      evidence_hint: >
+        SUIM export showing no production users with S_DEVELOP (DEBUG activity 02)
+        or S_ADMI_FCD debug values.
+    remediation: >
+      Strip S_DEVELOP debug/replace from production roles; grant only via
+      time-boxed emergency access.
+    tags: [sod]
+
+  # ── System management / change control ────────────────────────────────────
+  - id: ABAP-SYS-0001
+    title: Production clients are closed to changes and cross-client edits
+    category: system-management
+    severity: high
+    rationale: >
+      An open production client permits direct configuration changes that bypass the
+      transport route and leave no auditable trail.
+    check:
+      type: table_query
+      table: T000
+      fields: ["MANDT", "CCCATEGORY", "CCCORACTIV", "CCNOCLIIND"]
+      where: "CCCATEGORY = 'P'"
+      assert: any_rows
+    remediation: >
+      In SCC4 set productive clients to "no changes allowed" for both client-specific
+      and cross-client objects, and set the client role to Production.
+    tags: [baseline, change-control]
+
+  - id: ABAP-SYS-0002
+    title: System change option is set to not modifiable in production
+    category: system-management
+    severity: high
+    rationale: >
+      A modifiable production system allows repository objects to be changed
+      directly, sidestepping the transport path and any review with it.
+    check:
+      type: manual
+      evidence_hint: SE06 / SE03 screenshot showing the global setting "Not modifiable".
+    remediation: Set the global system change option to "Not modifiable" in SE06.
+    tags: [change-control]
+
+  # ── Patching ──────────────────────────────────────────────────────────────
+  - id: ABAP-PATCH-0001
+    title: SAP Security Patch Day notes are assessed and applied
+    category: patching
+    severity: critical
+    rationale: >
+      Security notes are published monthly with public CVEs; unapplied HotNews and
+      High-priority notes are the most commonly exploited weakness in SAP estates.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day review output showing each applicable note with its SNOTE status
+        or the Support Package level that covers it.
+    remediation: >
+      Run the monthly Patch Day comparison against this system's component levels and
+      schedule the applicable HotNews/High notes.
+    tags: [patching, patch-day]
+
+  # ── Custom code ───────────────────────────────────────────────────────────
+  - id: ABAP-CODE-0001
+    title: Custom ABAP is scanned for security defects
+    category: code-security
+    severity: medium
+    rationale: >
+      Customer code sits inside the same trust boundary as standard code; injection
+      and missing authority-check defects there are exploitable all the same.
+    check:
+      type: manual
+      evidence_hint: Code Vulnerability Analyzer / ATC run results with findings triaged.
+    remediation: >
+      Run CVA or ATC with the security check variant over customer namespaces and
+      remediate injection and missing-authority findings.
+    tags: [custom-code]

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/adam0thman/sap-security-baseline/schema/definition.schema.json",
+  "title": "SAP Security Baseline definition file",
+  "description": "A versioned, product-scoped set of security controls derived from SAP's official Security Guides, in a form that can be checked against a target system.",
+  "type": "object",
+  "required": ["spec_version", "id", "title", "product", "version", "released", "sources", "controls"],
+  "additionalProperties": false,
+  "properties": {
+    "spec_version": {
+      "description": "Version of THIS schema the file conforms to. Bump major on breaking changes.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "id": {
+      "description": "Stable machine id for the definition set (kebab-case). Never change it — consumers pin to it.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "title": { "type": "string", "minLength": 3 },
+    "product": {
+      "type": "object",
+      "required": ["key", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Product family key. Used to match a definition set to a CMDB system.",
+          "type": "string",
+          "enum": [
+            "NW_AS_ABAP", "NW_AS_JAVA", "ABAP_PLATFORM", "BW", "BW4HANA", "SAP_GATEWAY",
+            "SOLMAN", "HANA", "MAXDB", "ORACLE", "SQLSERVER", "DB2", "ASE", "BTP"
+          ]
+        },
+        "name": { "type": "string" },
+        "versions": {
+          "description": "Human-readable release coverage, e.g. ['7.50','7.52','ABAP Platform 2023'].",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "version": {
+      "description": "Definition-set version, CalVer YYYY.MM.PATCH — monotonic per id.",
+      "type": "string",
+      "pattern": "^\\d{4}\\.\\d{2}\\.\\d+$"
+    },
+    "released": { "type": "string", "format": "date" },
+    "supersedes": {
+      "description": "The previous version string this file replaces (null for the first release).",
+      "type": ["string", "null"]
+    },
+    "sources": {
+      "description": "Where the controls were derived from. Every file must cite its SAP sources.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["title", "url", "retrieved"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "retrieved": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/control" }
+    }
+  },
+  "$defs": {
+    "control": {
+      "type": "object",
+      "required": ["id", "title", "category", "severity", "rationale", "check", "remediation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable control id, unique within the file, NEVER reused or renumbered — findings reference it across versions.",
+          "type": "string",
+          "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*-\\d{4}$"
+        },
+        "title": { "type": "string", "minLength": 5 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "authentication", "authorization", "network", "encryption", "session",
+            "logging-audit", "patching", "data-storage", "interface-rfc", "web-http",
+            "system-management", "code-security", "database"
+          ]
+        },
+        "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+        "rationale": {
+          "description": "Why this matters, in our own words. Do NOT paste SAP's prose here.",
+          "type": "string",
+          "minLength": 20
+        },
+        "check": { "$ref": "#/$defs/check" },
+        "remediation": { "type": "string", "minLength": 10 },
+        "references": {
+          "description": "Deep links to the SAP guide section and/or SAP Note numbers.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "sap_note": { "type": "string", "pattern": "^\\d{6,10}$" },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "applies_to": {
+          "description": "Optional narrowing — omit when the control applies to every covered release.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "versions": { "type": "array", "items": { "type": "string" } },
+            "environments": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["PRD", "QAS", "DEV", "SBX"] }
+            }
+          }
+        },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "check": {
+      "description": "How the control is verified. `manual` = consultant attests; every other type is machine-checkable by a probe.",
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "manual" },
+            "evidence_hint": {
+              "description": "What the consultant should capture as proof (transaction, screenshot, export).",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "profile_parameter" },
+            "parameter": { "type": "string", "minLength": 3 },
+            "operator": { "$ref": "#/$defs/operator" },
+            "value": { "type": ["string", "number", "array"] }
+          },
+          "required": ["type", "parameter", "operator", "value"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "table_query" },
+            "table": { "type": "string" },
+            "fields": { "type": "array", "items": { "type": "string" } },
+            "where": { "type": "string" },
+            "assert": {
+              "description": "What must hold for the returned rows.",
+              "type": "string",
+              "enum": ["no_rows", "any_rows", "row_count_lte", "row_count_gte"]
+            },
+            "value": { "type": ["number", "null"] }
+          },
+          "required": ["type", "table", "assert"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "gateway_acl" },
+            "file": { "type": "string", "enum": ["secinfo", "reginfo", "prxyinfo"] },
+            "assert": { "type": "string", "enum": ["exists_and_restrictive", "exists", "no_wildcard_allow"] }
+          },
+          "required": ["type", "file", "assert"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "icf_service" },
+            "service_path": { "type": "string" },
+            "assert": { "type": "string", "enum": ["disabled", "enabled"] }
+          },
+          "required": ["type", "service_path", "assert"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "user_query" },
+            "criterion": {
+              "type": "string",
+              "enum": [
+                "default_password_unchanged", "sap_all_assigned", "type_dialog_with_sap_all",
+                "locked_status", "never_expiring_password", "standard_user_exists"
+              ]
+            },
+            "users": { "type": "array", "items": { "type": "string" } },
+            "assert": { "type": "string", "enum": ["no_rows", "any_rows"] }
+          },
+          "required": ["type", "criterion", "assert"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "operator": {
+      "type": "string",
+      "enum": ["eq", "neq", "gte", "lte", "in", "not_in", "matches"]
+    }
+  }
+}

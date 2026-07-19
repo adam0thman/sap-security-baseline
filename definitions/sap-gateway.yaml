@@ -1,0 +1,160 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+spec_version: "1.0"
+id: sap-gateway
+title: SAP Gateway (OData / Fiori Foundation) — Security Baseline
+product:
+  key: SAP_GATEWAY
+  name: SAP Gateway / SAP_GWFND (OData services for Fiori and external consumers)
+  versions: ["7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2023"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP Gateway Foundation — Security Information
+    url: https://help.sap.com/docs/SAP_NETWEAVER_750
+    retrieved: "2026-07-19"
+  - title: SAP NetWeaver Security Guide — RFC/ICF Security Guide
+    url: https://help.sap.com/docs/SAP_NETWEAVER_750
+    retrieved: "2026-07-19"
+
+# NOTE: this covers the OData/Fiori Gateway (SAP_GWFND). The RFC *gateway process*
+# controls (secinfo / reginfo / gw/acl_mode) belong to every AS ABAP instance and
+# live in nw-as-abap.yaml — do not duplicate them here.
+controls:
+  - id: GW-WEB-0001
+    title: OData traffic is served over HTTPS only
+    category: web-http
+    severity: high
+    rationale: >
+      OData responses carry business data and the session cookie or bearer token
+      that authorises them; over plain HTTP both are readable in transit.
+    check:
+      type: profile_parameter
+      parameter: login/ticket_only_by_https
+      operator: eq
+      value: 1
+    remediation: >
+      Terminate TLS at the ICM or the reverse proxy in front of it and disable the
+      plain HTTP port for the OData namespace.
+    tags: [baseline, tls]
+
+  - id: GW-WEB-0002
+    title: Only required OData services are activated
+    category: web-http
+    severity: high
+    rationale: >
+      Every activated service is reachable attack surface and must be patched and
+      authorization-checked; default activation of the full catalogue is far wider
+      than any single customer actually consumes.
+    check:
+      type: manual
+      evidence_hint: >
+        /IWFND/MAINT_SERVICE export listing activated services, cross-referenced with
+        the documented list of Fiori apps and interfaces actually in use.
+    remediation: >
+      Deactivate services with no consuming app or interface; keep an approved
+      register of the ones that remain and review it each release.
+    tags: [odata, attack-surface]
+
+  - id: GW-WEB-0003
+    title: The OData root ICF node is not left wide open
+    category: web-http
+    severity: high
+    rationale: >
+      The /sap/opu/odata node is the entry point to every activated service; loose
+      logon settings or an anonymous service user there apply to everything beneath it.
+    check:
+      type: icf_service
+      service_path: /sap/opu/odata
+      assert: enabled
+    remediation: >
+      Confirm the node is active only because it is needed, that no anonymous
+      service user is configured on it, and that logon is by named user or SSO.
+    tags: [odata, icf]
+
+  - id: GW-AUTHZ-0001
+    title: Service-level authorization is enforced with S_SERVICE
+    category: authorization
+    severity: high
+    rationale: >
+      Activating an OData service does not by itself restrict who may call it;
+      without S_SERVICE scoping, any authenticated user reaches every active service.
+    check:
+      type: manual
+      evidence_hint: >
+        Role export showing S_SERVICE values scoped per business role rather than a
+        wildcard, plus a spot-check that a low-privilege user is refused.
+    remediation: >
+      Scope S_SERVICE per role, and rely on the backend business authorization
+      objects as the second layer rather than the only one.
+    tags: [odata, authorization]
+
+  - id: GW-RFC-0001
+    title: Hub-to-backend trust does not grant blanket impersonation
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      In hub deployments the Gateway system calls the backend over trusted RFC. An
+      over-broad S_RFCACL (wildcard user or client) lets the hub act as any user in
+      the backend, which collapses the separation between the two tiers.
+    check:
+      type: manual
+      evidence_hint: >
+        S_RFCACL role definition from the backend showing explicit system/client/user
+        scoping with no '*' in the user field.
+    remediation: >
+      Scope S_RFCACL to the specific calling system and client, never grant it with a
+      wildcard user, and never assign SAP_ALL to the trust user.
+    tags: [hub, trusted-rfc, critical-path]
+
+  - id: GW-AUTHN-0001
+    title: CSRF protection remains enabled for modifying requests
+    category: session
+    severity: high
+    rationale: >
+      OData write operations rely on CSRF tokens; switching the check off lets a
+      third-party page drive authenticated state changes on behalf of a logged-on user.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence that CSRF protection is not disabled on the service or the ICF node
+        (no csrf-protection suppression in the service configuration).
+    remediation: >
+      Leave CSRF protection on; if a client cannot fetch a token, fix the client
+      rather than disabling the check.
+    tags: [odata, csrf]
+
+  - id: GW-LOG-0001
+    title: Gateway error and application logs are retained and reviewed
+    category: logging-audit
+    severity: medium
+    rationale: >
+      The Gateway error log is where failed authorization and malformed-request
+      patterns first show up; unretained or unreviewed, probing goes unnoticed.
+    check:
+      type: manual
+      evidence_hint: >
+        /IWFND/ERROR_LOG retention configuration plus evidence the log is reviewed on
+        a defined cadence.
+    remediation: >
+      Set the error-log retention to the agreed period and include it in the regular
+      operations review.
+    tags: [audit, monitoring]
+
+  - id: GW-PATCH-0001
+    title: Gateway component is covered by the Patch Day review
+    category: patching
+    severity: critical
+    rationale: >
+      SAP_GWFND has carried its own remotely-exploitable notes; because it is
+      internet-facing far more often than the rest of the stack, unpatched Gateway
+      defects are disproportionately dangerous.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day comparison output showing SAP_GWFND component level and any
+        applicable notes with their SNOTE status.
+    remediation: >
+      Include SAP_GWFND in the monthly Patch Day comparison and prioritise HotNews
+      affecting internet-facing services.
+    tags: [patching, patch-day]

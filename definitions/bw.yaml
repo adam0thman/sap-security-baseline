@@ -1,0 +1,178 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP Business Warehouse (classic, on NetWeaver)
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: bw
+title: SAP Business Warehouse (classic) — Security Baseline
+product:
+  key: BW
+  name: SAP Business Warehouse on SAP NetWeaver (BW 7.x)
+  versions: ["7.30", "7.40", "7.50"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: Security Guide for SAP BW
+    url: https://help.sap.com/saphelp_em92/helpdata/en/4f/0b56878a585f86e10000000a42189b/content.htm
+    retrieved: "2026-07-19"
+  - title: Security Guide SAP BW/4HANA — analysis authorization concept shared with classic BW
+    url: https://help.sap.com/doc/06e1ad1202284dbd8224a698ce11efe4/2021.07/en-US/SAP_BW4HANA_Security_Guide_en.pdf
+    retrieved: "2026-07-19"
+
+# NOTE: classic BW runs on AS ABAP, so nw-as-abap.yaml applies in addition. Where a
+# BW system is fronted by BEx Web on a Java stack, nw-as-java.yaml applies to that
+# stack. The analysis authorization controls below are shared with bw4hana.yaml —
+# deliberately duplicated, because the two are checked against different systems.
+controls:
+  - id: BW-AUTHZ-0001
+    title: The 0BI_ALL analysis authorization is not assigned to end users
+    category: authorization
+    severity: critical
+    rationale: >
+      0BI_ALL grants all values of every authorization-relevant characteristic, so a
+      holder reads all reporting data regardless of the analysis authorizations designed
+      for their role. It is also granted implicitly by a wildcard in S_RS_AUTH.
+    check:
+      type: manual
+      evidence_hint: >
+        RSECADMIN / SUIM export of users holding 0BI_ALL, including anyone whose
+        S_RS_AUTH contains an asterisk.
+    remediation: >
+      Remove 0BI_ALL from business roles, never grant S_RS_AUTH with a wildcard, and
+      restrict it to a reviewed set of administrators.
+    tags: [baseline, analysis-authorizations, quick-win]
+
+  - id: BW-AUTHZ-0002
+    title: Running queries as another user is restricted
+    category: authorization
+    severity: critical
+    rationale: >
+      Analysis authorization management can execute reporting in another user's
+      context, applying that user's authorizations. Unrestricted it is a direct
+      privilege-escalation path to any data in the warehouse.
+    check:
+      type: manual
+      evidence_hint: >
+        Role export showing S_RSEC restricted to named authorization administrators.
+    remediation: Grant S_RSEC only to analysis-authorization administrators and audit its use.
+    tags: [baseline, analysis-authorizations, privilege-escalation]
+
+  - id: BW-AUTHZ-0003
+    title: Characteristics carrying sensitive data are flagged authorization-relevant
+    category: authorization
+    severity: high
+    rationale: >
+      Reporting data is unprotected until the InfoObject is marked
+      authorization-relevant; without the flag, analysis authorizations simply do not
+      apply and every reporting user can read the values.
+    check:
+      type: manual
+      evidence_hint: >
+        List of authorization-relevant InfoObjects reconciled against the
+        characteristics carrying personal, financial or otherwise restricted data.
+    remediation: >
+      Flag the relevant InfoObjects as authorization-relevant and build the
+      corresponding analysis authorizations before the data reaches reporting users.
+    tags: [baseline, analysis-authorizations, data-protection]
+
+  - id: BW-AUTHZ-0004
+    title: Legacy reporting authorizations have been migrated to analysis authorizations
+    category: authorization
+    severity: medium
+    rationale: >
+      Systems upgraded from older BW releases can still carry remnants of the
+      superseded reporting authorization concept. Where both exist, the effective access
+      a user has becomes genuinely hard to reason about, and gaps go unnoticed.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence that the analysis authorization concept is the active one and that no
+        legacy reporting authorization objects remain in production roles.
+    remediation: >
+      Complete the migration to analysis authorizations and remove the legacy objects
+      from roles once reporting has been verified.
+    applies_to:
+      versions: ["7.30", "7.40", "7.50"]
+    tags: [analysis-authorizations, upgrade-debt]
+
+  - id: BW-RFC-0001
+    title: Background and extraction users hold only their intended profiles
+    category: interface-rfc
+    severity: high
+    rationale: >
+      Extraction and background accounts hold standing access across the warehouse and
+      every connected source system; over-granting turns a routine interface account
+      into a landscape-wide credential.
+    check:
+      type: manual
+      evidence_hint: >
+        User master export showing the BW background user with authorization profile
+        S_BI-WHM_RFC and the source-system extraction user with S_BI-WX_RFC, both of
+        communication/technical type and neither holding SAP_ALL.
+    remediation: >
+      Assign the intended profiles, keep the accounts non-dialog, and hold their
+      credentials in a vault rather than shared documentation.
+    tags: [baseline, rfc, interfaces]
+
+  - id: BW-NET-0001
+    title: RFC and HTTP communication paths are encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      BW consolidates data from across the enterprise, frequently including personal
+      data; unprotected RFC and HTTP paths expose both that data and the credentials
+      authorising access to it.
+    check:
+      type: profile_parameter
+      parameter: snc/enable
+      operator: eq
+      value: 1
+    remediation: Enable SNC for RFC paths and TLS for HTTP paths, including the BEx Web front end.
+    tags: [baseline, encryption]
+
+  - id: BW-WEB-0001
+    title: Only the required BW and BEx web services are active
+    category: web-http
+    severity: high
+    rationale: >
+      BEx Web and the BW HTTP services expose reporting data by URL and are a common
+      internet- or intranet-facing entry point; the delivered active set is wider than
+      most deployments consume.
+    check:
+      type: manual
+      evidence_hint: >
+        SICF export of the BW and BEx service tree showing active services, each mapped
+        to a consuming application.
+    remediation: >
+      Deactivate BW and BEx HTTP services with no consuming application, and restrict
+      the remainder by authorization and network path.
+    tags: [icf, attack-surface]
+
+  - id: BW-PATCH-0001
+    title: BW components are covered by the Patch Day review
+    category: patching
+    severity: critical
+    rationale: >
+      BW carries its own component stack on top of the ABAP server, and where BEx Web is
+      deployed a Java stack as well; a review covering only the base application server
+      leaves those components unassessed.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day comparison covering the BW component levels, and the Java stack where
+        BEx Web is deployed.
+    remediation: >
+      Include the BW components — and any associated Java stack — in the monthly Patch
+      Day comparison.
+    tags: [patching, patch-day]

@@ -291,6 +291,35 @@
         {
           "properties": {
             "type": {
+              "const": "ume_property"
+            },
+            "property": {
+              "type": "string",
+              "minLength": 3
+            },
+            "operator": {
+              "$ref": "#/$defs/operator"
+            },
+            "value": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "property",
+            "operator",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": {
               "const": "table_query"
             },
             "table": {

@@ -1,0 +1,261 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP NetWeaver AS Java
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.1"
+id: nw-as-java
+title: SAP NetWeaver AS Java — Security Baseline
+product:
+  key: NW_AS_JAVA
+  name: SAP NetWeaver Application Server for Java
+  versions: ["7.31", "7.40", "7.50"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: SAP NetWeaver AS Java Security Guide — Standard Users
+    url: https://help.sap.com/doc/saphelp_snc70/7.0/en-US/9f/d770424edcc553e10000000a1550b0/content.htm
+    retrieved: "2026-07-19"
+  - title: Authorization Concept of SAP NetWeaver AS for Java
+    url: https://help.sap.com/docs/SAP_NETWEAVER_750/44a42f8a693e4498be42434d28ff3457/48c943f3825c581ce10000000a42189c.html
+    retrieved: "2026-07-19"
+  - title: SAP NetWeaver AS Java — User Administration and Standard Users
+    url: https://help.sap.com/docs/SAP_NETWEAVER_750/2f8b1599655d4544a3d9c6d1a9b6546b/03455e42c4185542e10000000a1550b0.html
+    retrieved: "2026-07-19"
+
+# NOTE: AS Java has no ABAP-style instance profile. Its equivalents are UME
+# properties and VM/service parameters, expressed here as `ume_property` checks
+# (introduced in spec_version 1.1).
+controls:
+  # ── Authentication / standard users ───────────────────────────────────────
+  - id: JAVA-AUTHN-0001
+    title: The SAP* emergency user is not left active
+    category: authentication
+    severity: critical
+    rationale: >
+      SAP* on AS Java is an emergency account with full administrative rights,
+      intended only for repairing a broken UME configuration. While it is active,
+      users from the regular user stores cannot log on and the system is effectively
+      governed by one all-powerful local account.
+    check:
+      type: ume_property
+      property: ume.superadmin.activated
+      operator: eq
+      value: "false"
+    remediation: >
+      Deactivate the emergency user once UME is healthy, and set a strong password
+      for it so that a future activation is not trivially guessable.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: JAVA-AUTHN-0002
+    title: Standard users no longer carry their installation passwords
+    category: authentication
+    severity: critical
+    rationale: >
+      AS Java creates a set of standard accounts at installation — the Administrator,
+      the Guest user, and the communication users. Any still holding its initial
+      password is a direct route to administrative control of the engine.
+    check:
+      type: manual
+      evidence_hint: >
+        UME user list showing password-change dates for the Administrator
+        (J2EE_ADM_<SID>), Guest (J2EE_GST_<SID>), SAPJSF_<SID>, SAP<SID>DB, ADSuser
+        and caf_mp_scvuser where present.
+    remediation: >
+      Change every standard user's password through UME administration, record them
+      in a credential vault, and update the secure store and any dependent
+      configuration (JMS, data sources) with the new values.
+    tags: [baseline, standard-users, quick-win]
+
+  - id: JAVA-AUTHN-0003
+    title: The Guest user remains locked unless anonymous access is required
+    category: authentication
+    severity: high
+    rationale: >
+      The Guest account exists to serve anonymous access and ships locked. Unlocking
+      it without a documented need exposes whatever applications permit anonymous
+      logon to anyone who can reach the engine.
+    check:
+      type: manual
+      evidence_hint: >
+        UME showing the Guest user (J2EE_GST_<SID>) locked, or documented
+        justification plus the restricted role set if anonymous access is genuinely needed.
+    remediation: >
+      Keep Guest locked. Where anonymous access is required for a specific
+      application, scope its roles to that application only.
+    tags: [baseline, standard-users]
+
+  - id: JAVA-AUTHN-0004
+    title: UME enforces a minimum password length
+    category: authentication
+    severity: high
+    rationale: >
+      The UME security policy is the only central control over password strength for
+      users held in the Java user store; left at a permissive default it undermines
+      every account the engine authenticates locally.
+    check:
+      type: ume_property
+      property: ume.logon.security_policy.password_min_length
+      operator: gte
+      value: 8
+    remediation: >
+      Set the minimum length to at least 8, or to the customer's policy where that is
+      stricter, and apply it to every security policy profile in use.
+    tags: [baseline, password-policy]
+
+  - id: JAVA-AUTHN-0005
+    title: Accounts lock after repeated failed logons
+    category: authentication
+    severity: high
+    rationale: >
+      Without a lockout threshold the Java logon endpoints — which are frequently the
+      internet-facing part of the landscape — permit unlimited password guessing.
+    check:
+      type: ume_property
+      property: ume.logon.security_policy.lock_after_invalid_attempts
+      operator: lte
+      value: 5
+    remediation: >
+      Set the lockout threshold to 5 or fewer failed attempts and agree an unlock
+      process with the service desk.
+    tags: [baseline, password-policy]
+
+  # ── Authorization ─────────────────────────────────────────────────────────
+  - id: JAVA-AUTHZ-0001
+    title: Administrative roles are held by named individuals only
+    category: authorization
+    severity: high
+    rationale: >
+      Membership of the Administrators group confers unlimited control of the engine,
+      including deployment of arbitrary code. Shared or generously-granted admin
+      access removes both accountability and any meaningful segregation of duties.
+    check:
+      type: manual
+      evidence_hint: >
+        UME export of the Administrators group and any role granting the
+        Administrator action set, with each member mapped to a named person.
+    remediation: >
+      Reduce administrative membership to named administrators, remove shared
+      accounts, and review the list on a defined cadence.
+    tags: [baseline, sod]
+
+  - id: JAVA-AUTHZ-0002
+    title: UME roles are built from J2EE actions rather than blanket assignments
+    category: authorization
+    severity: medium
+    rationale: >
+      Assigning broad predefined roles instead of composing the specific actions an
+      application needs grants far more than the task requires and is difficult to
+      audit later.
+    check:
+      type: manual
+      evidence_hint: >
+        Role definitions showing action-level composition for the business roles in
+        use, rather than direct assignment of wide administrative roles.
+    remediation: >
+      Compose UME roles from the specific J2EE actions each application requires and
+      retire over-broad role assignments.
+    tags: [authorization]
+
+  # ── Network / administration surface ──────────────────────────────────────
+  - id: JAVA-NET-0001
+    title: Administrative protocols are not reachable from user networks
+    category: network
+    severity: critical
+    rationale: >
+      The P4 (RMI/JMX) and telnet administration interfaces allow configuration
+      changes and deployment. Exposed beyond an administrative network — and P4 in
+      its unencrypted form — they are a direct path to full engine control.
+    check:
+      type: manual
+      evidence_hint: >
+        Firewall or port-scan evidence showing the P4 and telnet administration ports
+        reachable only from the administration network, with P4 secured (P4S) where used.
+    remediation: >
+      Restrict the administration ports at the network layer, use the SSL-secured P4
+      variant for remote administration, and disable telnet administration where it is
+      not required.
+    tags: [baseline, network, quick-win]
+
+  - id: JAVA-NET-0002
+    title: HTTP access to the engine is TLS-protected
+    category: encryption
+    severity: high
+    rationale: >
+      AS Java frequently fronts browser-facing applications; without TLS the logon
+      credentials and session identifiers of every user are exposed on the wire.
+    check:
+      type: manual
+      evidence_hint: >
+        ICM/Web Dispatcher configuration showing TLS enabled with a valid certificate,
+        and the plain HTTP port either disabled or redirecting.
+    remediation: >
+      Configure TLS on the ICM or the Web Dispatcher in front of it, install a
+      certificate from a trusted CA, and disable or redirect plain HTTP.
+    tags: [baseline, encryption, tls]
+
+  - id: JAVA-WEB-0001
+    title: Unused Java applications and aliases are undeployed or restricted
+    category: web-http
+    severity: medium
+    rationale: >
+      A default AS Java installation exposes administrative and example applications
+      that most customers never use; each one is reachable attack surface carrying its
+      own patch burden.
+    check:
+      type: manual
+      evidence_hint: >
+        List of deployed applications and their aliases, with the ones actually in use
+        documented and the remainder undeployed or access-restricted.
+    remediation: >
+      Undeploy applications with no business owner; where an application must remain,
+      restrict it by role and by network path.
+    tags: [attack-surface]
+
+  # ── Logging ───────────────────────────────────────────────────────────────
+  - id: JAVA-LOG-0001
+    title: Security audit logging is enabled and retained
+    category: logging-audit
+    severity: high
+    rationale: >
+      Without the Java security audit log there is no record of logon attempts, role
+      changes or deployments, so neither misuse nor a successful intrusion can be
+      reconstructed afterwards.
+    check:
+      type: manual
+      evidence_hint: >
+        Log configuration showing the security audit log active, with retention and
+        an offload or archiving arrangement matching the agreed period.
+    remediation: >
+      Enable security audit logging, size retention to the agreed period, and include
+      the log in the regular operations review.
+    tags: [baseline, audit, monitoring]
+
+  # ── Patching ──────────────────────────────────────────────────────────────
+  - id: JAVA-PATCH-0001
+    title: AS Java components are covered by the Patch Day review
+    category: patching
+    severity: critical
+    rationale: >
+      Java stack components have carried remotely-exploitable notes affecting
+      internet-facing services; because Java systems are more often externally
+      reachable, unpatched defects here are disproportionately dangerous.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day comparison output covering the Java component levels, with
+        applicable notes and their implementation status.
+    remediation: >
+      Include the Java stack in the monthly Patch Day comparison and prioritise
+      HotNews affecting externally-reachable services.
+    tags: [patching, patch-day]

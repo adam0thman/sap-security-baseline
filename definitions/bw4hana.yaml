@@ -1,0 +1,266 @@
+# yaml-language-server: $schema=../schema/definition.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAP Security Baseline — SAP BW/4HANA
+#
+#  Compiled and maintained by Nik M Adam, Adam One Services.
+#  Derived from SAP's publicly available Security Guides (see `sources` below).
+#  No SAP documentation is reproduced verbatim; rationale and remediation text is
+#  original. SAP product names are trademarks of SAP SE; this project is not
+#  affiliated with or endorsed by SAP SE.
+#
+#  Repository:      https://github.com/adam0thman/sap-security-baseline
+#  Corrections and feature requests: hello@adamoneservices.com
+#  Licence:         MIT (see LICENSE)
+# ─────────────────────────────────────────────────────────────────────────────
+spec_version: "1.0"
+id: bw4hana
+title: SAP BW/4HANA — Security Baseline
+product:
+  key: BW4HANA
+  name: SAP BW/4HANA
+  versions: ["2021 SPS07", "2021", "2.0"]
+version: "2026.07.1"
+released: "2026-07-19"
+supersedes: null
+sources:
+  - title: Security Guide SAP BW/4HANA (2021 SPS07)
+    url: https://help.sap.com/doc/06e1ad1202284dbd8224a698ce11efe4/2021.07/en-US/SAP_BW4HANA_Security_Guide_en.pdf
+    retrieved: "2026-07-19"
+
+# NOTE: BW/4HANA runs on AS ABAP, so the controls in nw-as-abap.yaml apply in
+# addition to these. Only the BW-specific matters are covered here.
+controls:
+  # ── Analysis authorizations ───────────────────────────────────────────────
+  - id: BW4-AUTHZ-0001
+    title: The 0BI_ALL analysis authorization is not assigned to end users
+    category: authorization
+    severity: critical
+    rationale: >
+      0BI_ALL grants all values of every authorization-relevant characteristic, so any
+      user holding it can read all reporting data at any time regardless of the
+      analysis authorizations designed for their role. It also arrives implicitly via
+      a wildcard entry in S_RS_AUTH, which is easy to grant by accident.
+    check:
+      type: manual
+      evidence_hint: >
+        RSECADMIN / SUIM export showing which users hold 0BI_ALL, including anyone whose
+        S_RS_AUTH contains an asterisk, with each remaining holder justified.
+    remediation: >
+      Remove 0BI_ALL from business roles, never grant S_RS_AUTH with a wildcard, and
+      restrict it to a small, reviewed set of administrators.
+    references:
+      - label: Authorizations — Critical Analysis Authorizations
+    tags: [baseline, analysis-authorizations, quick-win]
+
+  - id: BW4-AUTHZ-0002
+    title: Wide-ranging authorization templates are not used as production roles
+    category: authorization
+    severity: high
+    rationale: >
+      The delivered templates are starting points, not finished roles. Several carry
+      broad authorizations — some wide on S_RFC, others covering all InfoProviders via
+      S_RS_COMP — so copying one into a production role silently grants far more than
+      the job needs.
+    check:
+      type: manual
+      evidence_hint: >
+        Role export showing whether S_RS_RDEAD, S_RS_ROPAD, S_RS_TREQD, S_RS_RDEMO or
+        S_RS_TREPU are assigned directly, and to whom.
+    remediation: >
+      Derive production roles from the templates and then trim them to the required
+      InfoProviders and function scope; do not assign the templates as-is.
+    tags: [analysis-authorizations, sod]
+
+  - id: BW4-AUTHZ-0003
+    title: Running queries as another user is restricted
+    category: authorization
+    severity: critical
+    rationale: >
+      The analysis authorization management screen can execute transactions in the
+      context of another user, which means all of that user's authorizations apply.
+      Unrestricted, it is a direct privilege-escalation route to any data in the system.
+    check:
+      type: manual
+      evidence_hint: >
+        Role export showing S_RSEC restricted to named administrators, covering both the
+        "execute as another user" function and the authorization log tool (RSECPROT).
+    remediation: >
+      Grant S_RSEC only to the small group who administer analysis authorizations, and
+      audit its use.
+    tags: [baseline, analysis-authorizations, privilege-escalation]
+
+  - id: BW4-AUTHZ-0004
+    title: Characteristics carrying sensitive data are flagged authorization-relevant
+    category: authorization
+    severity: high
+    rationale: >
+      Data is not protected by default: unless an InfoObject or field is marked
+      authorization-relevant, analysis authorizations never apply to it and every
+      reporting user can read it. This is the most common cause of over-broad data
+      access in a BW estate.
+    check:
+      type: manual
+      evidence_hint: >
+        List of InfoObjects marked authorization-relevant, reconciled against the
+        characteristics that carry personal, financial or otherwise restricted data.
+    remediation: >
+      Flag the relevant InfoObjects and fields as authorization-relevant and build
+      analysis authorizations for them before the data reaches reporting users.
+    tags: [baseline, analysis-authorizations, data-protection]
+
+  # ── Interfaces / background users ─────────────────────────────────────────
+  - id: BW4-RFC-0001
+    title: Background and extraction users hold only their intended profiles
+    category: interface-rfc
+    severity: high
+    rationale: >
+      The users driving extraction and background processing are technical accounts with
+      standing access across the warehouse and its source systems. Granting them blanket
+      authorizations turns a routine interface account into a landscape-wide credential.
+    check:
+      type: manual
+      evidence_hint: >
+        User master export showing the BW/4HANA background user with authorization
+        profile S_BI-WHM_RFC and the source-system extraction user with S_BI-WX_RFC,
+        of type communication/technical, and neither holding SAP_ALL.
+    remediation: >
+      Assign the intended profiles, keep the users as communication rather than dialog
+      type, and store their credentials in a vault rather than in shared documentation.
+    tags: [baseline, rfc, interfaces]
+
+  - id: BW4-NET-0001
+    title: RFC and HTTP communication paths are encrypted
+    category: encryption
+    severity: high
+    rationale: >
+      BW traffic carries consolidated business data drawn from across the enterprise,
+      often including personal data. Unprotected RFC and HTTP paths expose that data and
+      the credentials authorising it.
+    check:
+      type: profile_parameter
+      parameter: snc/enable
+      operator: eq
+      value: 1
+    remediation: >
+      Enable SNC for RFC paths (front end, inter-application-server, SAProuter and
+      database connections) and TLS for HTTP paths.
+    tags: [baseline, encryption]
+
+  - id: BW4-WEB-0001
+    title: Only the required BW web and ICF services are active
+    category: web-http
+    severity: high
+    rationale: >
+      BW ships a set of HTTP services that expose or exchange warehouse data by URL.
+      Some are activated automatically during technical setup while others are not
+      needed at all, so the active set drifts wider than the deployment requires.
+    check:
+      type: manual
+      evidence_hint: >
+        SICF export of the BW service tree showing which services are active, with the
+        REST reporting interface and XMLA endpoints justified or deactivated.
+    remediation: >
+      Deactivate BW HTTP services with no consuming application — the REST reporting
+      interface and XML for Analysis endpoints in particular, as these are not activated
+      by the standard setup task list.
+    tags: [icf, attack-surface]
+
+  # ── Database (HANA) ───────────────────────────────────────────────────────
+  - id: BW4-DB-0001
+    title: HANA grants for BW functions are scoped to the required tables
+    category: database
+    severity: high
+    rationale: >
+      Enabling HANA-side features such as search requires granting the repository
+      technical user read access. Granting at schema level hands that user the whole
+      warehouse rather than the handful of tables the function actually needs.
+    check:
+      type: manual
+      evidence_hint: >
+        HANA grant statements for the repository user showing table-level SELECT grants
+        rather than a schema-wide grant.
+    remediation: >
+      Grant SELECT on only the specific tables the function requires, and review the
+      grants after upgrades that change the required list.
+    references:
+      - sap_note: "2362807"
+        label: Tables required for SAP HANA search in BW/4HANA
+    tags: [hana, least-privilege]
+
+  - id: BW4-DB-0002
+    title: Smart Data Access remote-source users are least-privileged
+    category: database
+    severity: medium
+    rationale: >
+      With Smart Data Access, SQL is passed through to the remote database as the user
+      configured on the remote source; an over-privileged account there extends the
+      warehouse's reach far beyond the data it needs.
+    check:
+      type: manual
+      evidence_hint: >
+        Remote source definitions with the credentials used and the privileges those
+        accounts hold in the source database.
+    remediation: >
+      Restrict the remote-source account to the schemas and tables actually consumed,
+      and review when new virtual tables are added.
+    tags: [hana, least-privilege]
+
+  # ── Data protection & logging ─────────────────────────────────────────────
+  - id: BW4-DATA-0001
+    title: Access to highly sensitive personal data is logged
+    category: logging-audit
+    severity: high
+    rationale: >
+      A warehouse concentrates personal data from every source system, which makes it
+      the highest-value target in the landscape and brings it squarely within data
+      protection obligations that require access to be demonstrable.
+    check:
+      type: manual
+      evidence_hint: >
+        Read Access Logging configuration covering the reporting and planning
+        applications that expose personal data, with evidence logs are retained.
+    remediation: >
+      Configure Read Access Logging for the affected applications, and where local data
+      protection law requires access logging for sensitive categories, enable the
+      corresponding mechanism.
+    references:
+      - sap_note: "933441"
+        label: Access logging for reporting and planning applications
+    tags: [data-protection, audit, gdpr]
+
+  - id: BW4-LOG-0001
+    title: The analysis authorization log is available and protected
+    category: logging-audit
+    severity: medium
+    rationale: >
+      The authorization log is what makes a failed or unexpected data access
+      explainable; it also reveals authorization-relevant data values, so it needs the
+      same protection as the data itself.
+    check:
+      type: manual
+      evidence_hint: >
+        Evidence the log can be switched on when required, and that access to it is
+        restricted through S_RSEC.
+    remediation: >
+      Keep the log available for troubleshooting, enable it selectively rather than
+      permanently for all users, and restrict access to authorization administrators.
+    tags: [audit, analysis-authorizations]
+
+  # ── Patching ──────────────────────────────────────────────────────────────
+  - id: BW4-PATCH-0001
+    title: BW/4HANA and its HANA database are covered by the Patch Day review
+    category: patching
+    severity: critical
+    rationale: >
+      A BW landscape spans the ABAP stack, the BW components and the HANA database, each
+      patched separately; a review that covers only the application server leaves the
+      database layer holding the consolidated data unassessed.
+    check:
+      type: manual
+      evidence_hint: >
+        Patch Day comparison covering the BW component levels together with the HANA
+        revision, and the applicable notes for each.
+    remediation: >
+      Include both the BW components and the HANA revision in the monthly Patch Day
+      comparison.
+    tags: [patching, patch-day]

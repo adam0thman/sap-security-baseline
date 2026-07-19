@@ -57,7 +57,10 @@ schema/
 
 definitions/
   nw-as-abap.yaml            SAP NetWeaver AS ABAP / ABAP Platform
+  nw-as-java.yaml            SAP NetWeaver AS Java
   sap-gateway.yaml           SAP Gateway (OData / Fiori Foundation)
+  bw.yaml                    SAP Business Warehouse (classic, on NetWeaver)
+  bw4hana.yaml               SAP BW/4HANA
 
 tools/
   validate.py                Validates definitions: schema + rules JSON Schema can't express
@@ -92,6 +95,7 @@ consuming tool implements one probe per type.
 | `check.type` | Verified by reading | Example |
 |---|---|---|
 | `profile_parameter` | Instance profile / `RSPARAM` | `login/min_password_lng >= 8` |
+| `ume_property` | AS Java UME property | `ume.superadmin.activated = false` |
 | `table_query` | A table via RFC | Production clients closed in `T000` |
 | `user_query` | User master data | No standard user left on a default password |
 | `gateway_acl` | `secinfo` / `reginfo` | ACL exists and is restrictive |
@@ -109,9 +113,15 @@ subset trustworthy.
 | Definition set | Product key | Controls | Status |
 |---|---|---:|---|
 | `nw-as-abap` | `NW_AS_ABAP` | 25 (18 auto / 7 manual) | Published |
+| `nw-as-java` | `NW_AS_JAVA` | 12 (3 auto / 9 manual) | Published |
 | `sap-gateway` | `SAP_GATEWAY` | 8 (2 auto / 6 manual) | Published |
-| — | `NW_AS_JAVA`, `BW`, `BW4HANA` | — | Next |
+| `bw` | `BW` | 8 (1 auto / 7 manual) | Published |
+| `bw4hana` | `BW4HANA` | 12 (1 auto / 11 manual) | Published |
 | — | `SOLMAN`, `HANA`, `MAXDB`, `ORACLE`, `SQLSERVER`, `DB2`, `ASE`, `BTP` | — | Backlog |
+
+**65 controls across 5 products.** Layering is deliberate: BW, BW/4HANA and Gateway all run on
+AS ABAP, so `nw-as-abap` applies *in addition* to those sets rather than being duplicated into
+them. Each file states its layering in a comment at the top of `controls`.
 
 ---
 
@@ -191,7 +201,17 @@ release, and validate any change in a non-production system first. Baseline valu
 policy-driven settings (password length, timeouts, retention) are defensible starting points, not
 SAP-mandated figures — align them with your own security policy.
 
-## Licence
+## Licence — free for everyone, including commercial use
 
-MIT — see [`LICENSE`](LICENSE). The licence covers the material in this repository only, not SAP's
-documentation, which remains the property of SAP SE.
+**MIT** (see [`LICENSE`](LICENSE)). In plain terms, you may:
+
+- use this in **private, internal, consulting, or commercial** work;
+- **copy, modify and redistribute** it, including inside a paid product or service;
+- do so with **no fee, no royalty, and no permission required**.
+
+The only condition is that the copyright and licence notice travels with substantial copies.
+
+The licence covers **this repository's own material** — the control statements, schema and tooling,
+which are original work. It does not and cannot license SAP's documentation, which remains the
+property of SAP SE: publicly readable is not the same as public domain. That is precisely why the
+controls here are *derived and rewritten* rather than copied, so this repository is free to pass on.

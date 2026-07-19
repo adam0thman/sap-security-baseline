@@ -24,9 +24,9 @@ product:
   key: NW_AS_ABAP
   name: SAP NetWeaver Application Server for ABAP
   versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
-version: "2026.07.2"
+version: "2026.07.3"
 released: "2026-07-19"
-supersedes: "2026.07.1"
+supersedes: "2026.07.2"
 sources:
   - title: SAP NetWeaver Application Server for ABAP Security Guide
     url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
@@ -1165,3 +1165,46 @@ controls:
       Set dbs/dba/ccms_security_level = 1 and dbs/dba/ccms_maintenance = 1 so only
       authorised users with the required roles can execute DBA functions.
     tags: [ecs-mandatory]
+
+  # ── Standard users: the facts a read-only USR02 read can settle ────────────
+  # NOTE: whether a standard user still holds its DEFAULT PASSWORD is answered by
+  # report RSUSR003, which has no RFC-callable equivalent. The only remote
+  # alternative is a trial logon, which would lock these very accounts and mimic a
+  # credential attack in the Security Audit Log. ABAP-AUTHN-0006 therefore stays
+  # manual; the controls below cover what can be established safely.
+
+  - id: ABAP-AUTHN-0025
+    title: EARLYWATCH and SAPCPIC do not exist unless in use
+    category: authentication
+    severity: high
+    rationale: >
+      These accounts have well-known names and published default credentials. Deleting
+      the ones nobody uses removes the target entirely, which is stronger than trying to
+      keep their passwords secret.
+    check:
+      type: user_query
+      criterion: standard_user_exists
+      users: ["EARLYWATCH", "SAPCPIC"]
+      assert: no_rows
+    remediation: >
+      Delete EARLYWATCH in all clients; delete SAPCPIC where unused, and change its
+      password where it is genuinely required.
+    tags: [standard-users, ecs-mandatory, quick-win]
+
+  - id: ABAP-AUTHN-0026
+    title: Standard users that must exist are locked
+    category: authentication
+    severity: critical
+    rationale: >
+      SAP* must exist so the kernel never falls back to its built-in emergency user, and
+      TMSADM is needed for transport — but neither should be usable for an interactive
+      logon. An unlocked standard account is a named, well-known way in.
+    check:
+      type: user_query
+      criterion: locked_status
+      users: ["SAP*", "TMSADM"]
+      assert: no_rows
+    remediation: >
+      Lock SAP* in every client and lock TMSADM outside the transport-domain client,
+      keeping the accounts present but unusable for logon.
+    tags: [standard-users, ecs-mandatory, critical-path]

@@ -24,9 +24,9 @@ product:
   key: NW_AS_ABAP
   name: SAP NetWeaver Application Server for ABAP
   versions: ["7.40", "7.50", "7.52", "ABAP Platform 1909+", "ABAP Platform 2020+", "ABAP Platform 2023"]
-version: "2026.07.3"
+version: "2026.07.4"
 released: "2026-07-19"
-supersedes: "2026.07.2"
+supersedes: "2026.07.3"
 sources:
   - title: SAP NetWeaver Application Server for ABAP Security Guide
     url: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-us/4d/de53b3e9142e51e10000000a42189c/content.htm
@@ -796,11 +796,9 @@ controls:
       creates the appearance of control. Wildcards in reginfo and prxyinfo defeat the
       entire purpose of the ACL.
     check:
-      type: manual
-      evidence_hint: >
-        Contents of secinfo, reginfo and prxyinfo showing the #VERSION header, permit
-        lines scoped to local/internal hosts, and no wildcard values (secinfo permits a
-        wildcard only in the USER field).
+      type: gateway_acl
+      file: secinfo
+      assert: exists_and_restrictive
     remediation: >
       Maintain each ACL with its version header and explicit permit lines; remove
       wildcard host, program and access values.
@@ -1208,3 +1206,37 @@ controls:
       Lock SAP* in every client and lock TMSADM outside the transport-domain client,
       keeping the accounts present but unusable for logon.
     tags: [standard-users, ecs-mandatory, critical-path]
+
+  - id: ABAP-RFC-0016
+    title: The gateway registration ACL contains no open permit line
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      A reginfo permit line with an unrestricted host lets any machine that can reach the
+      gateway register an external RFC server program, which is enough to intercept or
+      inject RFC traffic.
+    check:
+      type: gateway_acl
+      file: reginfo
+      assert: exists_and_restrictive
+    remediation: >
+      Keep the #VERSION header and scope every permit line to specific program IDs and
+      hosts; remove any line granting an unrestricted HOST.
+    tags: [gateway, ecs-mandatory, critical-path]
+
+  - id: ABAP-RFC-0017
+    title: The gateway proxy ACL contains no open permit line
+    category: interface-rfc
+    severity: critical
+    rationale: >
+      prxyinfo governs whether the gateway will proxy a connection onward. A line
+      permitting any source to any destination turns the gateway into an open relay into
+      the internal network, and it is the ACL most often left at a permissive default.
+    check:
+      type: gateway_acl
+      file: prxyinfo
+      assert: exists_and_restrictive
+    remediation: >
+      Add the #VERSION header and restrict SOURCE and DEST to the specific hosts that
+      genuinely need proxying; remove any SOURCE=* or DEST=* permit line.
+    tags: [gateway, ecs-mandatory, critical-path]
